@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+apps/api/.venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+apps/web/dist/
+infra/cdk.out/
+infra/dist/
+*.tsbuildinfo
+
+# Env / secretos
+.env
+.env.*
+!.env.example
+apps/web/.env
+!apps/web/.env.example
+
+# Editores / SO
+.DS_Store
+*.log
+
+# Coverage
+htmlcov/
+.coverage
+coverage/
+
+# Contratos generados
+packages/contracts/openapi.json
+packages/contracts/generated/

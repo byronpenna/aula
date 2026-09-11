@@ -1,0 +1,14 @@
+{
+  "name": "@aula/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenAPI exportado desde FastAPI + tipos TypeScript generados (sección 8).",
+  "scripts": {
+    "export-openapi": "cd ../../apps/api && .venv/bin/python export_openapi.py > ../../packages/contracts/openapi.json",
+    "generate-types": "npx openapi-typescript openapi.json -o generated/client.d.ts",
+    "generate": "npm run export-openapi && npm run generate-types"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.5.2"
+  }
+}

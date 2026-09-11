@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Sin despliegue (sección 18): no hay OIDC ni cuenta AWS configurada todavía para
+# este repo. Este workflow solo valida lint, tipos, pruebas, build y `cdk synth`.
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aula
+          POSTGRES_PASSWORD: aula
+          POSTGRES_DB: aula
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U aula -d aula"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: mypy app
+      - env:
+          DATABASE_URL: postgresql+psycopg://aula:aula@localhost:5432/aula
+          TEST_ADMIN_DATABASE_URL: postgresql+psycopg://aula:aula@localhost:5432/aula
+        run: pytest
+      - name: Alembic upgrade desde cero (sección 19, punto 11)
+        env:
+          DATABASE_URL: postgresql+psycopg://aula:aula@localhost:5432/aula_migrations_check
+        run: |
+          PGPASSWORD=aula psql -h localhost -U aula -d aula -c "CREATE DATABASE aula_migrations_check;"
+          alembic upgrade head
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+
+  infra:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: infra/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npx cdk synth --quiet
