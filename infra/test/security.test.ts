@@ -26,6 +26,7 @@ describe("infra security assertions", () => {
   const api = new ApiStack(app, "TestApi", {
     vpc: network.vpc,
     appSecurityGroup: network.appSecurityGroup,
+    migrationRunnerSecurityGroup: network.migrationRunnerSecurityGroup,
     dbProxyEndpoint: data.proxyEndpoint,
     dbSecret: data.databaseSecret,
     userPool: identity.userPool,

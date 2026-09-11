@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -23,10 +23,19 @@ engine: Engine = create_engine(
     pool_size=settings.db_pool_size,
     max_overflow=settings.db_max_overflow,
     pool_pre_ping=True,
-    connect_args={
-        "options": f"-c statement_timeout={settings.db_statement_timeout_ms}",
-    },
 )
+
+
+@event.listens_for(engine, "connect")
+def _set_statement_timeout(dbapi_connection, connection_record) -> None:  # noqa: ANN001
+    """Fija `statement_timeout` con `SET` tras conectar, no con `options` de libpq
+    en `connect_args`: RDS Proxy rechaza esa forma ("Feature not supported: RDS
+    Proxy currently doesn't support command-line options"), descubierto en el
+    primer despliegue real contra el proxy (sección 4, [S2])."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute(f"SET statement_timeout = {settings.db_statement_timeout_ms}")
+    cursor.close()
+
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 

@@ -22,9 +22,13 @@ class Settings(BaseSettings):
     app_env: AppEnv = "local"
     log_level: str = "INFO"
 
-    # Base de datos: en local se arma desde piezas sueltas; en cloud DATABASE_URL
-    # normalmente viene resuelto desde Secrets Manager por el runner de despliegue.
+    # Base de datos: en local se arma desde piezas sueltas (DATABASE_URL directo).
+    # En cloud, la Lambda recibe DB_PROXY_ENDPOINT + DB_SECRET_ARN (no una URL
+    # completa); `get_settings()` resuelve el secreto una sola vez por contenedor
+    # frío y construye `database_url` a partir de ellos (ver `_resolve_cloud_database_url`).
     database_url: str = "postgresql+psycopg://aula:aula@localhost:5432/aula"
+    db_proxy_endpoint: str | None = None
+    db_secret_arn: str | None = None
     db_pool_size: int = 1
     db_max_overflow: int = 0
     db_statement_timeout_ms: int = 5000
@@ -62,6 +66,35 @@ class Settings(BaseSettings):
         return self
 
 
+def _resolve_cloud_database_url(settings: Settings) -> Settings:
+    """Construye `database_url` desde Secrets Manager + RDS Proxy (sección 4).
+
+    Se llama una sola vez por contenedor cálido (memoizado vía `get_settings`),
+    no en cada request. `sslmode=require` porque el proxy exige TLS
+    (`requireTLS: true` en infra/lib/data-stack.ts); no valida el certificado
+    completo todavía (pendiente de endurecer con el bundle de CA de RDS).
+    """
+    import json
+
+    import boto3
+
+    client = boto3.client("secretsmanager")
+    secret = json.loads(
+        client.get_secret_value(SecretId=settings.db_secret_arn)["SecretString"]
+    )
+    username = secret["username"]
+    password = secret["password"]
+    dbname = secret.get("dbname", "aula")
+    url = (
+        f"postgresql+psycopg://{username}:{password}"
+        f"@{settings.db_proxy_endpoint}:5432/{dbname}?sslmode=require"
+    )
+    return settings.model_copy(update={"database_url": url})
+
+
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    if settings.db_secret_arn and settings.db_proxy_endpoint:
+        settings = _resolve_cloud_database_url(settings)
+    return settings

@@ -67,6 +67,67 @@
         "sts:GetCallerIdentity"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "OperateAndDebugDeployedApp",
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
+        "logs:GetLogEvents",
+        "logs:FilterLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:861418247819:log-group:*"
+    },
+    {
+      "Sid": "InvokeAndInspectAulaLambdas",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:InvokeFunction",
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:ListFunctions"
+      ],
+      "Resource": "arn:aws:lambda:*:861418247819:function:Aula-*"
+    },
+    {
+      "Sid": "InspectApiGatewayAndCognito",
+      "Effect": "Allow",
+      "Action": [
+        "apigateway:GET",
+        "cognito-idp:DescribeUserPool",
+        "cognito-idp:ListUsers",
+        "cognito-idp:AdminGetUser",
+        "rds:DescribeDBInstances",
+        "rds:DescribeDBProxies",
+        "sqs:GetQueueAttributes",
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:GetMetricData"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ManageAulaAmplifyApp",
+      "Effect": "Allow",
+      "Action": [
+        "amplify:CreateApp",
+        "amplify:GetApp",
+        "amplify:UpdateApp",
+        "amplify:DeleteApp",
+        "amplify:ListApps",
+        "amplify:CreateBranch",
+        "amplify:GetBranch",
+        "amplify:UpdateBranch",
+        "amplify:ListBranches",
+        "amplify:CreateDeployment",
+        "amplify:StartDeployment",
+        "amplify:GetJob",
+        "amplify:ListJobs",
+        "amplify:TagResource"
+      ],
+      "Resource": [
+        "arn:aws:amplify:*:861418247819:apps/*"
+      ]
     }
   ]
 }

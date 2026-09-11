@@ -35,6 +35,11 @@ class JsonFormatter(logging.Formatter):
             value = getattr(record, key, None)
             if value is not None:
                 payload[key] = value
+        # Sin esto, logger.exception()/exc_info=True no dejaban rastro del
+        # traceback real en los logs (bug encontrado al diagnosticar el primer
+        # despliegue real: solo se veía "unhandled_error" sin causa).
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
         return json.dumps(payload, default=str)
 
 

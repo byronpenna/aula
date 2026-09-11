@@ -59,6 +59,7 @@ const api = new ApiStack(app, `${prefix}-Api`, {
   ...stackProps,
   vpc: network.vpc,
   appSecurityGroup: network.appSecurityGroup,
+  migrationRunnerSecurityGroup: network.migrationRunnerSecurityGroup,
   dbProxyEndpoint: data.proxyEndpoint,
   dbSecret: data.databaseSecret,
   userPool: identity.userPool,
@@ -66,6 +67,9 @@ const api = new ApiStack(app, `${prefix}-Api`, {
   filesBucketName: `aula-files-${environmentName}`,
   queueUrl: asyncStack.notificationsQueue.queueUrl,
   environmentName,
+  // Dominio real del frontend en Amplify Hosting (docs/adr/0002-frontend-amplify.md).
+  // Actualizar aquí y redeployar si se agrega un dominio propio más adelante.
+  allowedOrigins: ["https://main.dy880wnmeoiy1.amplifyapp.com"],
 });
 
 const frontend = new FrontendStack(app, `${prefix}-Frontend`, {

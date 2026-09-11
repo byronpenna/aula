@@ -45,7 +45,12 @@ export class AsyncStack extends cdk.Stack {
       ),
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
-      reservedConcurrentExecutions: 5,
+      // Sin reservedConcurrentExecutions por ahora: esta cuenta AWS es nueva y su
+      // cuota total de concurrencia de Lambda es más baja que la asumida
+      // originalmente (sección 4 pedía "validar cuotas de la cuenta y ajustar");
+      // reservar 5 aquí + 30 en ApiStack violó el mínimo de ejecuciones sin
+      // reservar de la cuenta. Pendiente: confirmar la cuota real (Service
+      // Quotas) y reintroducir reservas cuando haya margen medido.
       environment: { APP_ENV: props.environmentName },
     });
 
