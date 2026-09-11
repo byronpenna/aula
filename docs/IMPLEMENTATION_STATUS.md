@@ -1,13 +1,20 @@
 # Estado de implementación
 
-Última actualización: 2026-09-10. Fase entregada: **0 y 1** (sección 20 del documento de arquitectura), con la primera entrega vertical de la sección 1 completa.
+Última actualización: 2026-09-11. Fase entregada: **0 y 1** (sección 20 del documento de arquitectura), con la primera entrega vertical de la sección 1 completa.
 
 ## Implementado
 
 ### Fase 0 — Inspección, ADR, supuestos, repo y contratos
 - Monorepo creado según la estructura de la sección 16 (`apps/api`, `apps/web`, `infra`, `packages/contracts`, `scripts`, `tests/e2e`, `tests/load`, `docs/`).
 - `docs/ASSUMPTIONS.md`, `docs/adr/0001-arquitectura-base.md`, `docs/cost-estimate.md` (plantilla, sin cotización cerrada), `docs/runbooks/aws-profile-setup.md`.
-- Repositorio Git inicializado localmente. Sin remoto configurado; nada empujado a ningún lado.
+- Repositorio Git inicializado localmente y publicado en `https://github.com/byronpenna/aula.git` (rama `main`).
+
+### AWS — cuenta y bootstrap (2026-09-11)
+- Perfil `aula` creado por el propietario, cuenta `861418247819`, región `us-east-1`. Verificado con `sts get-caller-identity`.
+- Policy de uso diario adjunta al usuario `aula` (`docs/runbooks/aws-cli-user-policy.json`): puede asumir los roles de CDK bootstrap y operar solo sobre stacks `Aula-*`; no tiene alcance de IAM/S3/EC2 directo.
+- `cdk bootstrap aws://861418247819/us-east-1` corrido y confirmado `CREATE_COMPLETE` (stack `CDKToolkit`, versión 32). Bucket de assets `cdk-hnb659fds-assets-861418247819-us-east-1`, repo ECR `cdk-hnb659fds-container-assets-861418247819-us-east-1`, cifrado con key KMS administrada por AWS (no se creó key propia). Este es el primer recurso real con costo (mínimo) creado en la cuenta.
+- Policy temporal de bootstrap (`docs/runbooks/aws-bootstrap-only-policy.json`) pendiente de que el propietario la desadjunte/borre del usuario `aula` con su identidad de administrador (instrucciones en el runbook); no debe quedar adjunta de forma permanente.
+- **Aún no se ha corrido `cdk deploy` de ningún stack de aplicación** (`Aula-dev-Network`, `-Data`, etc.); solo existe el bootstrap. Ningún recurso de red/DB/Lambda/Cognito real ha sido creado todavía.
 - OpenAPI exportable desde FastAPI (`apps/api/export_openapi.py`) + script de generación de cliente TS en `packages/contracts` (no ejecutado en esta entrega: requiere `npm run generate` manual).
 
 ### Fase 1 — Auth, permisos, DB, IaC base, frontend shell + entrega vertical
