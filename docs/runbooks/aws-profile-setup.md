@@ -1,8 +1,8 @@
 # Configurar el perfil AWS para el proyecto Aula Virtual
 
-Esta sesión de Claude Code **no tiene** un perfil AWS configurado para este proyecto y **no ha tocado** tu `~/.aws/config` ni `~/.aws/credentials` existentes (ya tienes otros perfiles ahí). Este runbook son los pasos para que **tú** crees un perfil nuevo, aislado, cuando decidas avanzar con la nube. Nada de esto se ejecuta automáticamente.
+Estado actual (2026-09-11): el perfil `aula` ya existe, apunta a la cuenta `861418247819` / región `us-east-1`, y tiene adjunta la policy de uso diario (`aws-cli-user-policy.json`, más abajo). Sigue sin correrse `cdk bootstrap` en esa cuenta/región. Esta sesión de Claude Code no creó el perfil ni adjuntó ninguna policy — eso lo hizo el propietario directamente; aquí se documenta el estado para que quede registrado.
 
-Recomendación: usa un perfil con nombre propio, por ejemplo `aula-dev`, para no interferir con tus perfiles actuales ni con otros proyectos.
+Las secciones "Opción A/B" de abajo quedan como referencia si en el futuro se crea un perfil nuevo (por ejemplo `aula-staging`, `aula-prod`) para otro ambiente.
 
 ## Opción A — AWS IAM Identity Center / SSO (recomendado si tu organización ya lo usa)
 
@@ -29,24 +29,53 @@ Solo si no tienes Identity Center disponible. Es preferible evitar keys permanen
    - Default output format: `json`
 4. Verifica: `aws sts get-caller-identity --profile aula-dev`
 
-## Usar el perfil con este proyecto
+## Dos policies, dos identidades distintas
 
-- Exporta `AWS_PROFILE=aula-dev` en tu shell (o `export AWS_PROFILE=aula-dev` en `.envrc`/`.env` local, **nunca** commiteado) antes de correr comandos CDK:
-  ```bash
-  export AWS_PROFILE=aula-dev
-  export AWS_REGION=us-east-1
-  cd infra
-  npx cdk bootstrap    # una sola vez por cuenta/región, tiene costo/recursos mínimos
-  npx cdk synth        # genera CloudFormation, no crea nada
-  npx cdk diff          # antes de cualquier deploy, para ver qué se crearía
-  npx cdk deploy <stack> # cuando decidas desplegar de verdad — tiene costo
-  ```
-- `make infra-synth` (definido en este repo) corre `cdk synth` sin necesitar el perfil: los stacks son "environment-agnostic" por diseño (`infra/bin/aula.ts` solo fija `env: {account, region}` si exportas explícitamente `AULA_CDK_ENV=1` además de `CDK_DEFAULT_ACCOUNT`/`CDK_DEFAULT_REGION`). Esto es intencional: el propio CLI de `cdk` puebla `CDK_DEFAULT_ACCOUNT`/`CDK_DEFAULT_REGION` automáticamente desde el perfil `default` de tu máquina si existe uno, aunque no lo hayas pedido; sin el opt-in `AULA_CDK_ENV=1`, este proyecto ignora esas variables ambientales y no contacta ninguna cuenta AWS al sintetizar. Actívalo solo cuando vayas a hacer `cdk deploy` real con el perfil `aula-dev`:
-  ```bash
-  export AWS_PROFILE=aula-dev
-  export AULA_CDK_ENV=1
-  npx cdk deploy <stack>
-  ```
+Este proyecto usa dos policies IAM separadas a propósito, y **no las usa la misma identidad**:
+
+| Policy | Archivo | Quién la tiene | Para qué |
+|---|---|---|---|
+| Uso diario | `aws-cli-user-policy.json` | Usuario `aula` (ya adjunta) | `cdk synth`/`diff`/`deploy`/`destroy` de los stacks `Aula-*`, asumiendo los roles que crea el bootstrap |
+| Bootstrap único | `aws-bootstrap-only-policy.json` | Una identidad con permisos de administrador (root, u otro perfil admin) — **no** `aula` | Crear una sola vez el stack `CDKToolkit` (bucket de assets, repo ECR, roles `cdk-hnb659fds-*`, parámetro SSM, key KMS) |
+
+El usuario `aula` deliberadamente **no puede** crear/adjuntar/quitar policies IAM ni crear el bootstrap por sí mismo — por diseño, para no tener alcance de administrador de forma permanente. Los pasos 1, 2 y 4 de abajo se corren con tu identidad de administrador de la cuenta; solo el paso 3 usa `AWS_PROFILE=aula`.
+
+```bash
+# --- con tu identidad de ADMINISTRADOR (no AWS_PROFILE=aula) ---
+aws iam create-policy \
+  --policy-name AulaCdkBootstrapOnly \
+  --policy-document file://docs/runbooks/aws-bootstrap-only-policy.json
+
+aws iam attach-user-policy \
+  --user-name aula \
+  --policy-arn arn:aws:iam::861418247819:policy/AulaCdkBootstrapOnly
+
+# --- con AWS_PROFILE=aula, una sola vez por cuenta/región ---
+export AWS_PROFILE=aula
+export AULA_CDK_ENV=1
+cd infra
+npx cdk bootstrap aws://861418247819/us-east-1
+
+# --- de nuevo con tu identidad de ADMINISTRADOR: retirar el acceso temporal ---
+aws iam detach-user-policy \
+  --user-name aula \
+  --policy-arn arn:aws:iam::861418247819:policy/AulaCdkBootstrapOnly
+aws iam delete-policy \
+  --policy-arn arn:aws:iam::861418247819:policy/AulaCdkBootstrapOnly
+```
+
+Una vez hecho el bootstrap, el uso normal es solo con `AWS_PROFILE=aula` (ya tiene todo lo que necesita vía `aws-cli-user-policy.json`):
+
+```bash
+export AWS_PROFILE=aula
+export AULA_CDK_ENV=1
+cd infra
+npx cdk synth          # genera CloudFormation, no crea nada
+npx cdk diff            # antes de cualquier deploy, para ver qué se crearía
+npx cdk deploy <stack>  # cuando decidas desplegar de verdad — tiene costo
+```
+
+- `make infra-synth` corre `cdk synth` sin necesitar ningún perfil: los stacks son "environment-agnostic" por diseño (`infra/bin/aula.ts` solo fija `env: {account, region}` si exportas explícitamente `AULA_CDK_ENV=1` además de `CDK_DEFAULT_ACCOUNT`/`CDK_DEFAULT_REGION`). Esto es intencional: el propio CLI de `cdk` puebla esas variables automáticamente desde el perfil `default` de tu máquina si existe uno, aunque no lo hayas pedido; sin el opt-in, este proyecto las ignora y no contacta ninguna cuenta AWS al sintetizar.
 - Ningún comando de este repo ejecuta `cdk deploy`, `cdk bootstrap` ni crea recursos reales por sí solo. Eso siempre requiere que tú lo invoques explícitamente con el perfil ya configurado.
 
 ## Separación de ambientes

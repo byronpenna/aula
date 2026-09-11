@@ -1,0 +1,107 @@
+{
+  "_comment": "Policy TEMPORAL, solo para `cdk bootstrap`. Específica de la cuenta 861418247819 / región us-east-1 y del qualifier por defecto de CDK (hnb659fds). Adjúntala al usuario `aula`, corre `cdk bootstrap` UNA VEZ, y quítala; el uso diario debe volver a depender solo de docs/runbooks/aws-cli-user-policy.json.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BootstrapCloudFormationStack",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateStack",
+        "cloudformation:UpdateStack",
+        "cloudformation:DeleteStack",
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:GetTemplate",
+        "cloudformation:GetTemplateSummary",
+        "cloudformation:CreateChangeSet",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:DeleteChangeSet"
+      ],
+      "Resource": "arn:aws:cloudformation:us-east-1:861418247819:stack/CDKToolkit/*"
+    },
+    {
+      "Sid": "BootstrapAssetsBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:PutBucketPolicy",
+        "s3:GetBucketPolicy",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutBucketVersioning",
+        "s3:PutEncryptionConfiguration",
+        "s3:GetEncryptionConfiguration",
+        "s3:PutLifecycleConfiguration",
+        "s3:PutBucketTagging",
+        "s3:PutBucketOwnershipControls",
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::cdk-hnb659fds-assets-861418247819-us-east-1",
+        "arn:aws:s3:::cdk-hnb659fds-assets-861418247819-us-east-1/*"
+      ]
+    },
+    {
+      "Sid": "BootstrapContainerAssetsRepo",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:CreateRepository",
+        "ecr:DescribeRepositories",
+        "ecr:SetRepositoryPolicy",
+        "ecr:GetRepositoryPolicy",
+        "ecr:PutLifecyclePolicy",
+        "ecr:TagResource"
+      ],
+      "Resource": "arn:aws:ecr:us-east-1:861418247819:repository/cdk-hnb659fds-container-assets-861418247819-us-east-1"
+    },
+    {
+      "Sid": "BootstrapCdkToolkitRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies",
+        "iam:TagRole"
+      ],
+      "Resource": "arn:aws:iam::861418247819:role/cdk-hnb659fds-*-role-861418247819-us-east-1"
+    },
+    {
+      "Sid": "BootstrapVersionParameter",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:PutParameter",
+        "ssm:GetParameter",
+        "ssm:AddTagsToResource"
+      ],
+      "Resource": "arn:aws:ssm:us-east-1:861418247819:parameter/cdk-bootstrap/hnb659fds/version"
+    },
+    {
+      "Sid": "BootstrapAssetsEncryptionKey",
+      "Effect": "Allow",
+      "Action": [
+        "kms:CreateKey",
+        "kms:CreateAlias",
+        "kms:DescribeKey",
+        "kms:EnableKeyRotation",
+        "kms:PutKeyPolicy",
+        "kms:TagResource",
+        "kms:ScheduleKeyDeletion",
+        "kms:DeleteAlias"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": { "aws:RequestedRegion": "us-east-1" }
+      }
+    }
+  ]
+}
