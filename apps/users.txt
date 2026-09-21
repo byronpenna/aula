@@ -1,0 +1,10 @@
+│   Usuario    │         Email         │     Rol      │    Password    │
+├──────────────┼───────────────────────┼──────────────┼────────────────┤
+│ admin.demo   │ admin@example.local   │ school_admin │ aula-local-dev │
+├──────────────┼───────────────────────┼──────────────┼────────────────┤
+│ docente.demo │ docente@example.local │ teacher      │ aula-local-dev │
+├──────────────┼───────────────────────┼──────────────┼────────────────┤
+│ alumno.demo  │ (sin email)           │ student      │ aula-local-dev │
+├──────────────┼───────────────────────┼──────────────┼────────────────┤
+│ tutor.demo   │ tutor@example.local   │ guardian     │ aula-local-dev │
+└──────────────┴───────────────────────┴──────────────┴────────────────┘

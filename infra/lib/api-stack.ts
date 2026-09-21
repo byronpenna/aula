@@ -180,7 +180,18 @@ export class ApiStack extends cdk.Stack {
 
     httpApi.addRoutes({
       path: "/api/v1/{proxy+}",
-      methods: [apigwv2.HttpMethod.ANY],
+      // No incluir OPTIONS: con ANY, esta ruta (con authorizer) también capturaba
+      // el preflight, y el JWT authorizer lo rechazaba con 401 (el navegador nunca
+      // manda Authorization en el preflight) antes de que API Gateway pudiera
+      // aplicar el manejo automático de CORS, que solo ocurre cuando no hay una
+      // ruta explícita para OPTIONS. El navegador reporta ese 401 como error CORS.
+      methods: [
+        apigwv2.HttpMethod.GET,
+        apigwv2.HttpMethod.POST,
+        apigwv2.HttpMethod.PUT,
+        apigwv2.HttpMethod.PATCH,
+        apigwv2.HttpMethod.DELETE,
+      ],
       integration,
       authorizer,
     });

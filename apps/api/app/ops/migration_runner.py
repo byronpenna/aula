@@ -23,6 +23,15 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def handler(event: dict[str, Any] | None, context: object) -> dict[str, Any]:
     event = event or {}
     action = event.get("action", "upgrade")
+
+    if action == "seed_demo":
+        # Import local: evita cargar el ORM/permissions en las invocaciones normales
+        # de migración, que son la mayoría.
+        from app.ops.seed_demo import run as seed_demo_run
+
+        result = seed_demo_run(event.get("users", []), event.get("school_name", "Colegio Demo"))
+        return {"status": "ok", "action": action, "result": result}
+
     target = event.get("target", "head")
 
     cfg = Config(str(_PROJECT_ROOT / "alembic.ini"))

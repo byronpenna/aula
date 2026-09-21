@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { LoginPage } from "./routes/LoginPage";
+import { CallbackPage } from "./routes/CallbackPage";
 import { AppShell } from "./routes/AppShell";
 import { HomePage } from "./routes/HomePage";
 import { CoursesPage } from "./routes/CoursesPage";
@@ -21,6 +22,7 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/callback" element={<CallbackPage />} />
             <Route element={<AppShell />}>
               <Route path="/" element={<HomePage />} />
               <Route path="/courses" element={<CoursesPage />} />

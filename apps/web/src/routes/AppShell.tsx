@@ -4,9 +4,12 @@ import { useAuth } from "../context/AuthContext";
 // Navegación por rol, con selector de contexto cuando alguien tiene varios roles o
 // varios colegios (sección 10).
 export function AppShell() {
-  const { me, activeSchoolId, setActiveSchoolId, logout } = useAuth();
+  const { me, activeSchoolId, setActiveSchoolId, logout, isInitializing } = useAuth();
   const location = useLocation();
 
+  if (isInitializing) {
+    return <p className="p-6 text-sm text-slate-500">Cargando…</p>;
+  }
   if (!me) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }

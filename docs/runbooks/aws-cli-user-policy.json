@@ -107,6 +107,30 @@
       "Resource": "*"
     },
     {
+      "Sid": "ManageAulaCognitoUsers",
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:AdminCreateUser",
+        "cognito-idp:AdminSetUserPassword",
+        "cognito-idp:AdminDeleteUser",
+        "cognito-idp:AdminDisableUser",
+        "cognito-idp:AdminEnableUser",
+        "cognito-idp:AdminUpdateUserAttributes"
+      ],
+      "Resource": "arn:aws:cognito-idp:*:861418247819:userpool/*"
+    },
+    {
+      "Sid": "SelfInspectAulaIdentity",
+      "Effect": "Allow",
+      "Action": [
+        "iam:ListAttachedUserPolicies",
+        "iam:ListUserPolicies",
+        "iam:GetUserPolicy",
+        "iam:GetUser"
+      ],
+      "Resource": "arn:aws:iam::861418247819:user/aula"
+    },
+    {
       "Sid": "ManageAulaAmplifyApp",
       "Effect": "Allow",
       "Action": [

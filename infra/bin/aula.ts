@@ -47,6 +47,12 @@ const data = new DataStack(app, `${prefix}-Data`, {
 const identity = new IdentityStack(app, `${prefix}-Identity`, {
   ...stackProps,
   environmentName,
+  // Dominio real del frontend en Amplify Hosting (docs/adr/0002-frontend-amplify.md),
+  // mismo valor que allowedOrigins en ApiStack más abajo. Actualizar aquí y
+  // redeployar si se agrega un dominio propio o el frontend define otra ruta
+  // de callback distinta a /callback.
+  callbackUrls: ["https://main.dy880wnmeoiy1.amplifyapp.com/callback"],
+  logoutUrls: ["https://main.dy880wnmeoiy1.amplifyapp.com/"],
 });
 
 const asyncStack = new AsyncStack(app, `${prefix}-Async`, {
