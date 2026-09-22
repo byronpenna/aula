@@ -38,6 +38,40 @@ export interface Course {
   status: string;
 }
 
+export interface AcademicYear {
+  id: string;
+  label: string;
+  starts_on: string;
+  ends_on: string;
+  status: string;
+}
+
+export interface GradeLevel {
+  id: string;
+  name: string;
+  sort_order: number;
+}
+
+export interface Subject {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface Section {
+  id: string;
+  academic_year_id: string;
+  grade_level_id: string;
+  name: string;
+}
+
+export interface CourseTeacher {
+  id: string;
+  course_id: string;
+  teacher_user_id: string;
+  status: string;
+}
+
 export interface Assignment {
   id: string;
   course_id: string;

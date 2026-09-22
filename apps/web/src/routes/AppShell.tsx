@@ -35,6 +35,11 @@ export function AppShell() {
                   Mis hijos
                 </Link>
               )}
+              {(roles.includes("school_admin") || roles.includes("coordinator")) && (
+                <Link className="focus-ring rounded px-1" to="/admin/academics">
+                  Administración
+                </Link>
+              )}
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm text-slate-600">
