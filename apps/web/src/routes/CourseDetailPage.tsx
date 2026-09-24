@@ -7,6 +7,7 @@ import { z } from "zod";
 import { apiClient } from "../lib/apiClient";
 import type { Assignment } from "../lib/types";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
+import { useAuth } from "../context/AuthContext";
 
 // max_score se mantiene como string en el formulario (los inputs HTML son texto) y
 // se convierte a número solo al enviar; evita el desajuste de tipos input/output de
@@ -28,6 +29,13 @@ export function CourseDetailPage() {
   const { courseId } = useParams<{ courseId: string }>();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const { activeSchoolId, me } = useAuth();
+  const currentRoles = me?.memberships.find((m) => m.school_id === activeSchoolId)?.roles ?? [];
+  // Crear/publicar tareas es exclusivo de quien administra el curso (sección 6); un
+  // alumno o tutor solo debe ver el listado, nunca estos controles.
+  const isStaff = ["teacher", "school_admin", "coordinator"].some((r) =>
+    currentRoles.includes(r),
+  );
 
   const { data, isLoading, error } = useQuery<Assignment[]>({
     queryKey: ["courses", courseId, "assignments"],
@@ -70,15 +78,17 @@ export function CourseDetailPage() {
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold">Tareas del curso</h1>
-        <button
-          className="focus-ring rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
-          onClick={() => setShowForm((v) => !v)}
-        >
-          {showForm ? "Cancelar" : "Nueva tarea"}
-        </button>
+        {isStaff && (
+          <button
+            className="focus-ring rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+            onClick={() => setShowForm((v) => !v)}
+          >
+            {showForm ? "Cancelar" : "Nueva tarea"}
+          </button>
+        )}
       </div>
 
-      {showForm && (
+      {isStaff && showForm && (
         <form
           onSubmit={handleSubmit((values) => createMutation.mutate(values))}
           className="mb-6 rounded-lg border border-slate-200 bg-white p-4"
@@ -179,7 +189,7 @@ export function CourseDetailPage() {
                   Vence {new Date(assignment.due_at).toLocaleString()} · {assignment.status}
                 </p>
               </div>
-              {assignment.status === "draft" && (
+              {isStaff && assignment.status === "draft" && (
                 <button
                   className="focus-ring rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
                   onClick={() => publishMutation.mutate(assignment.id)}

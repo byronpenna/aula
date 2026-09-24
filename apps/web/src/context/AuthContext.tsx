@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { apiClient, setAuthToken, setCurrentSchoolId } from "../lib/apiClient";
+import { apiClient } from "../lib/apiClient";
 import {
   completeCognitoSignIn,
   getCognitoUser,
@@ -7,6 +7,7 @@ import {
   signInWithCognito,
   signOutOfCognito,
 } from "../lib/cognitoAuth";
+import { hasValidSession, useSessionStore } from "../lib/session";
 import type { Me } from "../lib/types";
 
 // Modo de autenticación (sección 6/17): "cognito" en cloud (dev/staging/prod,
@@ -37,41 +38,65 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [activeSchoolId, setActiveSchoolIdState] = useState<string | null>(null);
-  const [isInitializing, setIsInitializing] = useState(authMode === "cognito");
+  const [isInitializing, setIsInitializing] = useState(true);
 
   async function refreshMe() {
     const { data } = await apiClient.get<Me>("/me");
     setMe(data);
-    if (data.memberships.length === 1) {
+    const persistedSchoolId = useSessionStore.getState().schoolId;
+    const stillActive = data.memberships.some((m) => m.school_id === persistedSchoolId);
+    if (stillActive && persistedSchoolId) {
+      setActiveSchoolIdState(persistedSchoolId);
+    } else if (data.memberships.length === 1) {
       setActiveSchoolIdState(data.memberships[0].school_id);
-      setCurrentSchoolId(data.memberships[0].school_id);
+      useSessionStore.getState().setSchoolId(data.memberships[0].school_id);
     }
   }
 
   useEffect(() => {
-    if (authMode !== "cognito") return;
-    // Al recargar la página, la memoria del token se pierde (sección 6); rehidrata
-    // desde la sesión OIDC guardada en sessionStorage si sigue vigente.
+    // Al recargar la página, el estado de React se pierde; rehidrata la sesión
+    // desde sessionStorage (vía `lib/session.ts`, o la sesión OIDC de
+    // `lib/cognitoAuth.ts` en modo Cognito) si sigue vigente.
     (async () => {
-      const user = await getCognitoUser();
-      if (user) {
-        setAuthToken(user.access_token);
-        try {
+      try {
+        if (authMode === "cognito") {
+          const user = await getCognitoUser();
+          if (user) {
+            useSessionStore
+              .getState()
+              .setSession(user.access_token, user.expires_at ? user.expires_at * 1000 : null);
+            await refreshMe();
+          }
+        } else if (hasValidSession()) {
           await refreshMe();
-        } catch {
-          setAuthToken(null);
+        } else {
+          useSessionStore.getState().clear();
         }
+      } catch {
+        useSessionStore.getState().clear();
       }
       setIsInitializing(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Si el token se limpia a mitad de sesión (401 de la API, ver apiClient.ts), la
+  // vista debe reflejarlo de inmediato en vez de esperar a la próxima recarga.
+  useEffect(() => {
+    return useSessionStore.subscribe((state) => {
+      if (!state.token) {
+        setMe((current) => (current ? null : current));
+        setActiveSchoolIdState((current) => (current ? null : current));
+      }
+    });
+  }, []);
+
   async function loginLocal(username: string, password: string) {
     // Adaptador de login local (sección 17): solo funciona con APP_ENV=local en el
     // backend.
     const { data } = await apiClient.post("/auth/local/token", { username, password });
-    setAuthToken(data.access_token);
+    const expiresAt = Date.now() + data.expires_in * 1000;
+    useSessionStore.getState().setSession(data.access_token, expiresAt);
     await refreshMe();
   }
 
@@ -81,13 +106,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function completeCognitoCallback() {
     const user = await completeCognitoSignIn();
-    setAuthToken(user.access_token);
+    useSessionStore
+      .getState()
+      .setSession(user.access_token, user.expires_at ? user.expires_at * 1000 : null);
     await refreshMe();
   }
 
   function logout() {
-    setAuthToken(null);
-    setCurrentSchoolId(null);
+    useSessionStore.getState().clear();
     setMe(null);
     setActiveSchoolIdState(null);
     if (authMode === "cognito") {
@@ -97,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function setActiveSchoolId(schoolId: string) {
     setActiveSchoolIdState(schoolId);
-    setCurrentSchoolId(schoolId);
+    useSessionStore.getState().setSchoolId(schoolId);
   }
 
   const value = useMemo<AuthState>(

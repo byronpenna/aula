@@ -1,35 +1,22 @@
 import axios from "axios";
+import { useSessionStore } from "./session";
 
-// El token vive solo en memoria (nunca localStorage), como pide la sección 6 del
-// documento de arquitectura. Se pierde al recargar la página: eso es intencional
-// para este MVP local; la recuperación real de sesión llegará con Cognito.
-let inMemoryToken: string | null = null;
-let currentSchoolId: string | null = null;
-
-export function setAuthToken(token: string | null) {
-  inMemoryToken = token;
-}
-
-export function getAuthToken(): string | null {
-  return inMemoryToken;
-}
-
-export function setCurrentSchoolId(schoolId: string | null) {
-  currentSchoolId = schoolId;
-}
-
+// El token y el colegio activo se leen del store de sesión (`lib/session.ts`), que
+// los persiste en sessionStorage en vez de mantenerlos en variables de módulo: así
+// sobreviven a un F5 sin caer en localStorage (sección 6 de la arquitectura).
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1",
 });
 
 apiClient.interceptors.request.use((config) => {
-  if (inMemoryToken) {
+  const { token, schoolId } = useSessionStore.getState();
+  if (token) {
     config.headers = config.headers ?? {};
-    config.headers.Authorization = `Bearer ${inMemoryToken}`;
+    config.headers.Authorization = `Bearer ${token}`;
   }
-  if (currentSchoolId) {
+  if (schoolId) {
     config.headers = config.headers ?? {};
-    config.headers["X-School-Id"] = currentSchoolId;
+    config.headers["X-School-Id"] = schoolId;
   }
   return config;
 });
@@ -50,6 +37,12 @@ export class ApiError extends Error {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.response?.status === 401) {
+      // Token vencido o revocado a mitad de sesión: se limpia para que el próximo
+      // render de <AppShell> redirija a /login en vez de seguir reintentando con un
+      // token que el servidor ya no acepta.
+      useSessionStore.getState().clear();
+    }
     if (error.response?.data?.error) {
       const { code, message, details } = error.response.data.error;
       return Promise.reject(new ApiError(error.response.status, code, message, details));
