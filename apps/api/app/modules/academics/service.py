@@ -205,6 +205,11 @@ def create_enrollment(
             raise UnprocessableError(
                 f"El curso {course_id} no existe en la sección indicada."
             )
+        # Idempotente (sección 7, igual que el resto de la matrícula transaccional):
+        # matricular otra vez en un curso donde ya está inscrito no debe romper la
+        # transacción completa con un IntegrityError de la constraint única.
+        if academics_repo.is_student_enrolled_in_course(db, course_id, payload.student_id):
+            continue
         db.add(
             CourseEnrollment(
                 school_id=current.school_id,

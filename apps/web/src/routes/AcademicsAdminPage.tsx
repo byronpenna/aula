@@ -1,10 +1,19 @@
-import { type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../lib/apiClient";
-import type { AcademicYear, Course, GradeLevel, Permissions, Section, Subject } from "../lib/types";
+import type {
+  AcademicYear,
+  Course,
+  EnrollmentRecord,
+  GradeLevel,
+  Permissions,
+  Section,
+  StudentProfile,
+  Subject,
+} from "../lib/types";
 import { ErrorState, ForbiddenState, LoadingState } from "../components/States";
 
 // Panel de administración académica (Fase 2, sección 20): año académico, grado,
@@ -32,6 +41,7 @@ export function AcademicsAdminPage() {
       <SubjectsSection />
       <SectionsSection />
       <CoursesSection />
+      <EnrollmentsSection />
     </div>
   );
 }
@@ -535,6 +545,214 @@ function CoursesSection() {
             </li>
           ))}
         </ul>
+      )}
+    </Card>
+  );
+}
+
+// --- Inscripciones -------------------------------------------------------
+
+const enrollmentSchema = z.object({
+  student_id: z.string().min(1, "Requerido."),
+  academic_year_id: z.string().min(1, "Requerido."),
+  section_id: z.string().min(1, "Requerido."),
+  starts_on: z.string().min(1, "Requerido."),
+});
+type EnrollmentForm = z.infer<typeof enrollmentSchema>;
+
+function EnrollmentsSection() {
+  const queryClient = useQueryClient();
+  const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
+
+  const students = useQuery<StudentProfile[]>({
+    queryKey: ["students"],
+    queryFn: async () => (await apiClient.get("/students")).data,
+  });
+  const years = useQuery<AcademicYear[]>({
+    queryKey: ["academic-years"],
+    queryFn: async () => (await apiClient.get("/academic-years")).data,
+  });
+  const grades = useQuery<GradeLevel[]>({
+    queryKey: ["grade-levels"],
+    queryFn: async () => (await apiClient.get("/grade-levels")).data,
+  });
+  const sections = useQuery<Section[]>({
+    queryKey: ["sections"],
+    queryFn: async () => (await apiClient.get("/sections")).data,
+  });
+  const courses = useQuery<Course[]>({
+    queryKey: ["courses"],
+    queryFn: async () => (await apiClient.get("/courses")).data,
+  });
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    formState: { errors, isSubmitting },
+  } = useForm<EnrollmentForm>({ resolver: zodResolver(enrollmentSchema) });
+
+  const selectedSectionId = watch("section_id");
+  const selectedStudentId = watch("student_id");
+  const coursesInSection = courses.data?.filter((c) => c.section_id === selectedSectionId) ?? [];
+
+  const studentEnrollments = useQuery<EnrollmentRecord[]>({
+    queryKey: ["students", selectedStudentId, "enrollments"],
+    queryFn: async () => (await apiClient.get(`/students/${selectedStudentId}/enrollments`)).data,
+    enabled: Boolean(selectedStudentId),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (values: EnrollmentForm) =>
+      (
+        await apiClient.post("/enrollments", {
+          ...values,
+          course_ids: selectedCourseIds,
+        })
+      ).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["students", selectedStudentId, "enrollments"] });
+      reset();
+      setSelectedCourseIds([]);
+    },
+  });
+
+  function toggleCourse(courseId: string) {
+    setSelectedCourseIds((ids) =>
+      ids.includes(courseId) ? ids.filter((id) => id !== courseId) : [...ids, courseId],
+    );
+  }
+
+  const studentLabel = (student: StudentProfile) =>
+    student.display_name
+      ? `${student.display_name} (${student.student_number})`
+      : student.student_number;
+  const sectionLabel = (id: string) => {
+    const section = sections.data?.find((s) => s.id === id);
+    if (!section) return id.slice(0, 8);
+    const grade = grades.data?.find((g) => g.id === section.grade_level_id)?.name ?? "";
+    return `${grade} "${section.name}"`.trim();
+  };
+  const yearLabel = (id: string) => years.data?.find((y) => y.id === id)?.label ?? id.slice(0, 8);
+
+  const canCreate =
+    (students.data?.length ?? 0) > 0 &&
+    (years.data?.length ?? 0) > 0 &&
+    (sections.data?.length ?? 0) > 0;
+
+  const selectedStudent = students.data?.find((s) => s.id === selectedStudentId);
+
+  return (
+    <Card title="Inscripciones">
+      {!canCreate && (
+        <p className="mb-3 text-xs text-slate-500">
+          Crea al menos un alumno (vía seed/API), un año académico y una sección antes de
+          matricular.
+        </p>
+      )}
+      <form
+        onSubmit={handleSubmit((values) => createMutation.mutate(values))}
+        className="grid gap-3 sm:grid-cols-4"
+        noValidate
+      >
+        <Field label="Alumno" error={errors.student_id?.message}>
+          <select className={inputClass} {...register("student_id")}>
+            <option value="">Selecciona…</option>
+            {students.data?.map((student) => (
+              <option key={student.id} value={student.id}>
+                {studentLabel(student)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Año académico" error={errors.academic_year_id?.message}>
+          <select className={inputClass} {...register("academic_year_id")}>
+            <option value="">Selecciona…</option>
+            {years.data?.map((year) => (
+              <option key={year.id} value={year.id}>
+                {year.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Sección" error={errors.section_id?.message}>
+          <select className={inputClass} {...register("section_id")}>
+            <option value="">Selecciona…</option>
+            {sections.data?.map((section) => (
+              <option key={section.id} value={section.id}>
+                {sectionLabel(section.id)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Fecha de inicio" error={errors.starts_on?.message}>
+          <input type="date" className={inputClass} {...register("starts_on")} />
+        </Field>
+
+        {selectedSectionId && (
+          <div className="sm:col-span-4">
+            <p className="mb-1 text-xs font-medium text-slate-600">
+              Cursos de esa sección en los que también matricular (opcional)
+            </p>
+            {coursesInSection.length === 0 ? (
+              <p className="text-xs text-slate-500">Esa sección todavía no tiene cursos.</p>
+            ) : (
+              <div className="flex flex-wrap gap-3">
+                {coursesInSection.map((course) => (
+                  <label
+                    key={course.id}
+                    className="flex items-center gap-1.5 text-xs text-slate-700"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedCourseIds.includes(course.id)}
+                      onChange={() => toggleCourse(course.id)}
+                    />
+                    Curso {course.id.slice(0, 8)}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex items-end">
+          <button
+            type="submit"
+            disabled={isSubmitting || !canCreate}
+            className="focus-ring w-full rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
+          >
+            Matricular
+          </button>
+        </div>
+      </form>
+      {createMutation.isError && <ErrorState error={createMutation.error} />}
+
+      {selectedStudentId && selectedStudent && (
+        <div className="mt-4 border-t border-slate-100 pt-3">
+          <p className="mb-1 text-xs font-medium text-slate-600">
+            Matrículas actuales de {studentLabel(selectedStudent)}
+          </p>
+          {studentEnrollments.isLoading && <LoadingState label="Cargando matrículas…" />}
+          {studentEnrollments.error && <ErrorState error={studentEnrollments.error} />}
+          {studentEnrollments.data && studentEnrollments.data.length === 0 && (
+            <p className="text-xs text-slate-500">Sin matrículas todavía.</p>
+          )}
+          {studentEnrollments.data && studentEnrollments.data.length > 0 && (
+            <ul className="flex flex-wrap gap-2">
+              {studentEnrollments.data.map((enrollment) => (
+                <li
+                  key={enrollment.id}
+                  className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700"
+                >
+                  {sectionLabel(enrollment.section_id)} · {yearLabel(enrollment.academic_year_id)} ·{" "}
+                  {enrollment.status}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </Card>
   );

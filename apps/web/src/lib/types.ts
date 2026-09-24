@@ -72,6 +72,34 @@ export interface CourseTeacher {
   status: string;
 }
 
+export interface StudentProfile {
+  id: string;
+  student_number: string;
+  display_name: string | null;
+}
+
+export interface EnrollmentRecord {
+  id: string;
+  academic_year_id: string;
+  student_id: string;
+  section_id: string;
+  starts_on: string;
+  ends_on: string | null;
+  status: string;
+}
+
+// "File" ya es un tipo global del DOM (window.File); se nombra distinto para no
+// hacer shadowing por accidente en los componentes que también manejan inputs.
+export interface FileAttachment {
+  id: string;
+  owner_user_id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  status: string;
+  created_at: string;
+}
+
 export interface Assignment {
   id: string;
   course_id: string;

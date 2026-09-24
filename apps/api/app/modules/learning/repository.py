@@ -39,6 +39,15 @@ def get_submission(
     return db.execute(stmt).scalar_one_or_none()
 
 
+def get_submission_by_id(
+    db: Session, school_id: uuid.UUID, submission_id: uuid.UUID
+) -> Submission | None:
+    stmt = select(Submission).where(
+        Submission.id == submission_id, Submission.school_id == school_id
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
 def list_submissions_for_assignment(
     db: Session, school_id: uuid.UUID, assignment_id: uuid.UUID
 ) -> list[Submission]:

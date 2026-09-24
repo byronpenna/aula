@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient, ApiError } from "../lib/apiClient";
 import type { Submission } from "../lib/types";
 import { ErrorState, LoadingState } from "../components/States";
+import { FileAttachments } from "../components/FileAttachments";
 import { useAuth } from "../context/AuthContext";
 
 type SaveState = "idle" | "pending" | "saving" | "saved" | "offline" | "conflict" | "error";
@@ -12,6 +13,7 @@ const DEBOUNCE_MS = 2000;
 
 export function AssignmentDetailPage() {
   const { assignmentId } = useParams<{ assignmentId: string }>();
+  const queryClient = useQueryClient();
   const { activeSchoolId, me } = useAuth();
   const currentRoles =
     me?.memberships.find((m) => m.school_id === activeSchoolId)?.roles ?? [];
@@ -32,6 +34,7 @@ export function AssignmentDetailPage() {
     enabled: Boolean(assignmentId) && isStaff,
   });
 
+  const [expandedSubmissionId, setExpandedSubmissionId] = useState<string | null>(null);
   const [body, setBody] = useState("");
   const [version, setVersion] = useState(0);
   const [status, setStatus] = useState<"draft" | "submitted">("draft");
@@ -101,6 +104,16 @@ export function AssignmentDetailPage() {
     <div className="space-y-6">
       <h1 className="text-lg font-semibold">Tarea</h1>
 
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="mb-2 text-sm font-medium text-slate-700">Material adjunto</h2>
+        <FileAttachments
+          queryKey={["assignments", assignmentId, "files"]}
+          listUrl={`/assignments/${assignmentId}/files`}
+          uploadUrl={isStaff ? `/assignments/${assignmentId}/files` : undefined}
+          emptyLabel="El docente no adjuntó material a esta tarea."
+        />
+      </div>
+
       {isStudent && (
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <label className="mb-1 block text-sm font-medium" htmlFor="submission-body">
@@ -137,6 +150,35 @@ export function AssignmentDetailPage() {
               Esta entrega cambió desde otra sesión o pestaña. Recarga antes de seguir editando.
             </p>
           )}
+
+          <div className="mt-4 border-t border-slate-100 pt-3">
+            <h3 className="mb-1 text-xs font-medium text-slate-600">Archivos de mi entrega</h3>
+            {submissionQuery.data ? (
+              <FileAttachments
+                queryKey={["submissions", submissionQuery.data.id, "files"]}
+                listUrl={`/submissions/${submissionQuery.data.id}/files`}
+                uploadUrl={
+                  status === "submitted"
+                    ? undefined
+                    : `/assignments/${assignmentId}/my-submission/files`
+                }
+                emptyLabel="Sin archivos adjuntos todavía."
+              />
+            ) : (
+              <FileAttachments
+                queryKey={["submissions", "pending", assignmentId, "files"]}
+                listUrl=""
+                enabled={false}
+                uploadUrl={`/assignments/${assignmentId}/my-submission/files`}
+                emptyLabel="Sube un archivo o escribe tu entrega para empezar un borrador."
+                onUploaded={() =>
+                  queryClient.invalidateQueries({
+                    queryKey: ["assignments", assignmentId, "my-submission"],
+                  })
+                }
+              />
+            )}
+          </div>
         </div>
       )}
 
@@ -156,18 +198,43 @@ export function AssignmentDetailPage() {
                   <th className="py-1">Estado</th>
                   <th className="py-1">Entregada</th>
                   <th className="py-1">Tardía</th>
+                  <th className="py-1">Archivos</th>
                 </tr>
               </thead>
               <tbody>
                 {submissionsListQuery.data.map((s) => (
-                  <tr key={s.id} className="border-t border-slate-100">
-                    <td className="py-1">{s.student_id.slice(0, 8)}</td>
-                    <td className="py-1">{s.status}</td>
-                    <td className="py-1">
-                      {s.submitted_at ? new Date(s.submitted_at).toLocaleString() : "—"}
-                    </td>
-                    <td className="py-1">{s.late ? "Sí" : "No"}</td>
-                  </tr>
+                  <>
+                    <tr key={s.id} className="border-t border-slate-100">
+                      <td className="py-1">{s.student_id.slice(0, 8)}</td>
+                      <td className="py-1">{s.status}</td>
+                      <td className="py-1">
+                        {s.submitted_at ? new Date(s.submitted_at).toLocaleString() : "—"}
+                      </td>
+                      <td className="py-1">{s.late ? "Sí" : "No"}</td>
+                      <td className="py-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedSubmissionId((id) => (id === s.id ? null : s.id))
+                          }
+                          className="focus-ring rounded text-sky-700 underline hover:text-sky-900"
+                        >
+                          {expandedSubmissionId === s.id ? "Ocultar" : "Ver"}
+                        </button>
+                      </td>
+                    </tr>
+                    {expandedSubmissionId === s.id && (
+                      <tr key={`${s.id}-files`} className="border-t border-slate-100 bg-slate-50">
+                        <td colSpan={5} className="py-2">
+                          <FileAttachments
+                            queryKey={["submissions", s.id, "files"]}
+                            listUrl={`/submissions/${s.id}/files`}
+                            emptyLabel="Esta entrega no tiene archivos adjuntos."
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
             </table>

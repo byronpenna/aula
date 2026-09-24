@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # Importa todos los modelos para poblar Base.metadata antes de autogenerate.
 from app.db.base import Base  # noqa: E402
 from app.modules.academics import models as academics_models  # noqa: E402,F401
+from app.modules.files import models as files_models  # noqa: E402,F401
 from app.modules.identity import models as identity_models  # noqa: E402,F401
 from app.modules.learning import models as learning_models  # noqa: E402,F401
 

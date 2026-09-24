@@ -34,6 +34,12 @@ class PermissionsOut(BaseModel):
     permissions: list[str]
 
 
+class StudentProfileOut(BaseModel):
+    id: uuid.UUID
+    student_number: str
+    display_name: str | None
+
+
 class LinkedStudentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     student_id: uuid.UUID

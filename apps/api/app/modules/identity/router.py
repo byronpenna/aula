@@ -4,7 +4,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
-from app.core.deps import CurrentMembership, get_current_membership, get_current_user
+from app.core.deps import (
+    CurrentMembership,
+    get_current_membership,
+    get_current_user,
+    require_permission,
+)
+from app.core.permissions import ENROLLMENT_MANAGE
 from app.db.session import get_db
 from app.modules.identity import repository as identity_repo
 from app.modules.identity import service as identity_service
@@ -16,6 +22,7 @@ from app.modules.identity.schemas import (
     MembershipOut,
     MeOut,
     PermissionsOut,
+    StudentProfileOut,
 )
 
 router = APIRouter(tags=["identity"])
@@ -60,6 +67,18 @@ def read_my_students(
     """Tutor: selector de hijos vinculados; nunca búsqueda libre de otros alumnos
     (sección 10). Solo vínculos con status=active (sección 19, punto 2)."""
     return identity_service.list_linked_students(db, user.id)
+
+
+@router.get("/students", response_model=list[StudentProfileOut])
+def list_students(
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ENROLLMENT_MANAGE)),
+) -> list[StudentProfileOut]:
+    rows = identity_repo.list_student_profiles(db, current.school_id)
+    return [
+        StudentProfileOut(id=profile.id, student_number=profile.student_number, display_name=name)
+        for profile, name in rows
+    ]
 
 
 @router.post("/auth/local/token", response_model=LocalLoginResponse)

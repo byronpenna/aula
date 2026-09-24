@@ -97,3 +97,18 @@ def get_student_profile_by_user(
         StudentProfile.school_id == school_id, StudentProfile.user_id == user_id
     )
     return db.execute(stmt).scalar_one_or_none()
+
+
+def list_student_profiles(
+    db: Session, school_id: uuid.UUID
+) -> list[tuple[StudentProfile, str | None]]:
+    """Cada fila trae el `display_name` del `User` vinculado (puede ser `None`: un
+    alumno puede existir en el sistema académico antes de tener cuenta, ver
+    `StudentProfile.user_id`)."""
+    stmt = (
+        select(StudentProfile, User.display_name)
+        .outerjoin(User, User.id == StudentProfile.user_id)
+        .where(StudentProfile.school_id == school_id)
+        .order_by(StudentProfile.student_number)
+    )
+    return [(row[0], row[1]) for row in db.execute(stmt).all()]

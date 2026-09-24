@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 apps/api/.venv/
 *.egg-info/
+apps/api/local_storage/
 
 # Node
 node_modules/
