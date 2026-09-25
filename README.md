@@ -34,9 +34,13 @@ Usuarios de prueba (contraseña `aula-local-dev` para todos, login local en
 | Usuario | Rol |
 |---|---|
 | `admin.demo` | school_admin |
-| `docente.demo` | teacher |
+| `
+` | teacher |
 | `alumno.demo` | student |
 | `tutor.demo` | guardian |
+
+- Usuario: admin.sitio
+- Contraseña: aula-local-dev
 
 ## Comandos
 

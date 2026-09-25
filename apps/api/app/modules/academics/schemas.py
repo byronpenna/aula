@@ -12,6 +12,12 @@ class AcademicYearCreate(BaseModel):
     ends_on: date
 
 
+class AcademicYearUpdate(BaseModel):
+    label: str | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
+
+
 class AcademicYearOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -26,11 +32,17 @@ class GradeLevelCreate(BaseModel):
     sort_order: int = 0
 
 
+class GradeLevelUpdate(BaseModel):
+    name: str | None = None
+    sort_order: int | None = None
+
+
 class GradeLevelOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     name: str
     sort_order: int
+    status: str
 
 
 class SectionCreate(BaseModel):
@@ -39,12 +51,19 @@ class SectionCreate(BaseModel):
     name: str
 
 
+class SectionUpdate(BaseModel):
+    academic_year_id: uuid.UUID | None = None
+    grade_level_id: uuid.UUID | None = None
+    name: str | None = None
+
+
 class SectionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     academic_year_id: uuid.UUID
     grade_level_id: uuid.UUID
     name: str
+    status: str
 
 
 class SubjectCreate(BaseModel):
@@ -52,11 +71,17 @@ class SubjectCreate(BaseModel):
     name: str
 
 
+class SubjectUpdate(BaseModel):
+    code: str | None = None
+    name: str | None = None
+
+
 class SubjectOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     code: str
     name: str
+    status: str
 
 
 class CourseCreate(BaseModel):

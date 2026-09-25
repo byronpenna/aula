@@ -36,6 +36,9 @@ class GradeLevel(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
 
     name: Mapped[str] = mapped_column(nullable=False)
     sort_order: Mapped[int] = mapped_column(nullable=False, default=0)
+    # "active" | "archived" (baja lógica; nunca se borra un grado con secciones
+    # históricas, ver academics/service.py).
+    status: Mapped[str] = mapped_column(nullable=False, default="active")
 
 
 class Section(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
@@ -53,6 +56,7 @@ class Section(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
         UUID(as_uuid=True), ForeignKey("grade_levels.id"), nullable=False
     )
     name: Mapped[str] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(nullable=False, default="active")
 
 
 class Subject(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
@@ -61,6 +65,7 @@ class Subject(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
 
     code: Mapped[str] = mapped_column(nullable=False)
     name: Mapped[str] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(nullable=False, default="active")
 
 
 class Course(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
@@ -82,8 +87,11 @@ class Course(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
     )
     starts_on: Mapped[date] = mapped_column(nullable=False)
     ends_on: Mapped[date] = mapped_column(nullable=False)
-    # "active" | "deleted" (baja lógica, sección 6: nunca se hace DELETE real de una
-    # fila con tareas/entregas/matrículas dependientes; ver academics/service.py).
+    # "active" | "archived" (baja lógica, sección 6: nunca se hace DELETE real de una
+    # fila con tareas/entregas/matrículas dependientes). Un curso archivado sigue
+    # siendo resoluble por ID (historial de tareas/entregas, ver
+    # academics_repo.get_course), solo desaparece de los listados de navegación
+    # (academics_repo.list_*) y ya no admite nuevas matrículas.
     status: Mapped[str] = mapped_column(nullable=False, default="active")
 
 

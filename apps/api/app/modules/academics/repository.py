@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.modules.academics.models import (
@@ -29,6 +29,18 @@ def get_academic_year(db: Session, school_id: uuid.UUID, year_id: uuid.UUID) -> 
     return db.execute(stmt).scalar_one_or_none()
 
 
+def find_academic_year_by_normalized_label(
+    db: Session, school_id: uuid.UUID, normalized_label: str, exclude_id: uuid.UUID | None = None
+) -> AcademicYear | None:
+    stmt = select(AcademicYear).where(
+        AcademicYear.school_id == school_id,
+        func.lower(func.trim(AcademicYear.label)) == normalized_label,
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(AcademicYear.id != exclude_id)
+    return db.execute(stmt).scalar_one_or_none()
+
+
 def list_grade_levels(db: Session, school_id: uuid.UUID) -> list[GradeLevel]:
     stmt = select(GradeLevel).where(GradeLevel.school_id == school_id).order_by(
         GradeLevel.sort_order
@@ -45,6 +57,18 @@ def get_grade_level(
     return db.execute(stmt).scalar_one_or_none()
 
 
+def find_grade_level_by_normalized_name(
+    db: Session, school_id: uuid.UUID, normalized_name: str, exclude_id: uuid.UUID | None = None
+) -> GradeLevel | None:
+    stmt = select(GradeLevel).where(
+        GradeLevel.school_id == school_id,
+        func.lower(func.trim(GradeLevel.name)) == normalized_name,
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(GradeLevel.id != exclude_id)
+    return db.execute(stmt).scalar_one_or_none()
+
+
 def list_sections(db: Session, school_id: uuid.UUID) -> list[Section]:
     stmt = select(Section).where(Section.school_id == school_id)
     return list(db.execute(stmt).scalars().all())
@@ -52,6 +76,25 @@ def list_sections(db: Session, school_id: uuid.UUID) -> list[Section]:
 
 def get_section(db: Session, school_id: uuid.UUID, section_id: uuid.UUID) -> Section | None:
     stmt = select(Section).where(Section.id == section_id, Section.school_id == school_id)
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def find_section_by_normalized_name(
+    db: Session,
+    school_id: uuid.UUID,
+    academic_year_id: uuid.UUID,
+    grade_level_id: uuid.UUID,
+    normalized_name: str,
+    exclude_id: uuid.UUID | None = None,
+) -> Section | None:
+    stmt = select(Section).where(
+        Section.school_id == school_id,
+        Section.academic_year_id == academic_year_id,
+        Section.grade_level_id == grade_level_id,
+        func.lower(func.trim(Section.name)) == normalized_name,
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(Section.id != exclude_id)
     return db.execute(stmt).scalar_one_or_none()
 
 
@@ -65,15 +108,28 @@ def get_subject(db: Session, school_id: uuid.UUID, subject_id: uuid.UUID) -> Sub
     return db.execute(stmt).scalar_one_or_none()
 
 
-def get_course(db: Session, school_id: uuid.UUID, course_id: uuid.UUID) -> Course | None:
-    stmt = select(Course).where(
-        Course.id == course_id, Course.school_id == school_id, Course.status != "deleted"
+def find_subject_by_normalized_code(
+    db: Session, school_id: uuid.UUID, normalized_code: str, exclude_id: uuid.UUID | None = None
+) -> Subject | None:
+    stmt = select(Subject).where(
+        Subject.school_id == school_id,
+        func.lower(func.trim(Subject.code)) == normalized_code,
     )
+    if exclude_id is not None:
+        stmt = stmt.where(Subject.id != exclude_id)
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def get_course(db: Session, school_id: uuid.UUID, course_id: uuid.UUID) -> Course | None:
+    """Resolución puntual por ID: incluye cursos archivados a propósito (un docente o
+    alumno debe poder seguir abriendo una tarea/entrega histórica de un curso
+    archivado). Solo los listados de navegación (`list_*` abajo) excluyen archivados."""
+    stmt = select(Course).where(Course.id == course_id, Course.school_id == school_id)
     return db.execute(stmt).scalar_one_or_none()
 
 
 def list_all_courses(db: Session, school_id: uuid.UUID) -> list[Course]:
-    stmt = select(Course).where(Course.school_id == school_id, Course.status != "deleted")
+    stmt = select(Course).where(Course.school_id == school_id, Course.status != "archived")
     return list(db.execute(stmt).scalars().all())
 
 
@@ -85,7 +141,7 @@ def list_courses_taught_by(
         .join(CourseTeacher, CourseTeacher.course_id == Course.id)
         .where(
             Course.school_id == school_id,
-            Course.status != "deleted",
+            Course.status != "archived",
             CourseTeacher.teacher_user_id == teacher_user_id,
             CourseTeacher.status == "active",
         )
@@ -103,7 +159,7 @@ def list_courses_for_students(
         .join(CourseEnrollment, CourseEnrollment.course_id == Course.id)
         .where(
             Course.school_id == school_id,
-            Course.status != "deleted",
+            Course.status != "archived",
             CourseEnrollment.student_id.in_(student_ids),
             CourseEnrollment.status == "active",
         )

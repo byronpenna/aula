@@ -69,7 +69,7 @@ export function FileAttachments({
               <button
                 type="button"
                 onClick={() => downloadFile(file.id)}
-                className="focus-ring truncate rounded text-sky-700 underline hover:text-sky-900"
+                className="focus-ring truncate rounded text-brand-700 underline hover:text-brand-900"
               >
                 {file.filename}
               </button>

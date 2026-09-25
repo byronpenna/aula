@@ -23,6 +23,7 @@ from app.modules.academics.models import (
 from app.modules.academics.schemas import (
     AcademicYearCreate,
     AcademicYearOut,
+    AcademicYearUpdate,
     CourseCreate,
     CourseOut,
     CourseTeacherCreate,
@@ -32,10 +33,13 @@ from app.modules.academics.schemas import (
     EnrollmentOut,
     GradeLevelCreate,
     GradeLevelOut,
+    GradeLevelUpdate,
     SectionCreate,
     SectionOut,
+    SectionUpdate,
     SubjectCreate,
     SubjectOut,
+    SubjectUpdate,
 )
 from app.modules.identity.models import User
 
@@ -69,6 +73,43 @@ def list_academic_years(
     return academics_repo.list_academic_years(db, current.school_id)
 
 
+@router.patch("/academic-years/{year_id}", response_model=AcademicYearOut)
+def update_academic_year(
+    year_id: uuid.UUID,
+    payload: AcademicYearUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> AcademicYear:
+    return academics_service.update_academic_year(
+        db, current, year_id, payload, request.state.request_id
+    )
+
+
+@router.post("/academic-years/{year_id}/archive", response_model=AcademicYearOut)
+def archive_academic_year(
+    year_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> AcademicYear:
+    return academics_service.set_academic_year_status(
+        db, current, year_id, "archived", request.state.request_id
+    )
+
+
+@router.post("/academic-years/{year_id}/activate", response_model=AcademicYearOut)
+def activate_academic_year(
+    year_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> AcademicYear:
+    return academics_service.set_academic_year_status(
+        db, current, year_id, "active", request.state.request_id
+    )
+
+
 @router.post("/grade-levels", response_model=GradeLevelOut)
 def create_grade_level(
     payload: GradeLevelCreate,
@@ -84,6 +125,34 @@ def list_grade_levels(
     current: CurrentMembership = Depends(require_permission(COURSE_READ)),
 ) -> list[GradeLevel]:
     return academics_repo.list_grade_levels(db, current.school_id)
+
+
+@router.patch("/grade-levels/{grade_level_id}", response_model=GradeLevelOut)
+def update_grade_level(
+    grade_level_id: uuid.UUID,
+    payload: GradeLevelUpdate,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> GradeLevel:
+    return academics_service.update_grade_level(db, current, grade_level_id, payload)
+
+
+@router.post("/grade-levels/{grade_level_id}/archive", response_model=GradeLevelOut)
+def archive_grade_level(
+    grade_level_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> GradeLevel:
+    return academics_service.set_grade_level_status(db, current, grade_level_id, "archived")
+
+
+@router.post("/grade-levels/{grade_level_id}/activate", response_model=GradeLevelOut)
+def activate_grade_level(
+    grade_level_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> GradeLevel:
+    return academics_service.set_grade_level_status(db, current, grade_level_id, "active")
 
 
 @router.post("/subjects", response_model=SubjectOut)
@@ -103,6 +172,34 @@ def list_subjects(
     return academics_repo.list_subjects(db, current.school_id)
 
 
+@router.patch("/subjects/{subject_id}", response_model=SubjectOut)
+def update_subject(
+    subject_id: uuid.UUID,
+    payload: SubjectUpdate,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> Subject:
+    return academics_service.update_subject(db, current, subject_id, payload)
+
+
+@router.post("/subjects/{subject_id}/archive", response_model=SubjectOut)
+def archive_subject(
+    subject_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> Subject:
+    return academics_service.set_subject_status(db, current, subject_id, "archived")
+
+
+@router.post("/subjects/{subject_id}/activate", response_model=SubjectOut)
+def activate_subject(
+    subject_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> Subject:
+    return academics_service.set_subject_status(db, current, subject_id, "active")
+
+
 @router.post("/sections", response_model=SectionOut)
 def create_section(
     payload: SectionCreate,
@@ -120,6 +217,34 @@ def list_sections(
     current: CurrentMembership = Depends(require_permission(COURSE_READ)),
 ) -> list[Section]:
     return academics_repo.list_sections(db, current.school_id)
+
+
+@router.patch("/sections/{section_id}", response_model=SectionOut)
+def update_section(
+    section_id: uuid.UUID,
+    payload: SectionUpdate,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> Section:
+    return academics_service.update_section(db, current, section_id, payload)
+
+
+@router.post("/sections/{section_id}/archive", response_model=SectionOut)
+def archive_section(
+    section_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> Section:
+    return academics_service.set_section_status(db, current, section_id, "archived")
+
+
+@router.post("/sections/{section_id}/activate", response_model=SectionOut)
+def activate_section(
+    section_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> Section:
+    return academics_service.set_section_status(db, current, section_id, "active")
 
 
 @router.post("/courses", response_model=CourseOut)
@@ -156,14 +281,26 @@ def update_course(
     return _course_out(db, course)
 
 
-@router.delete("/courses/{course_id}", status_code=204, response_model=None)
-def delete_course(
+@router.post("/courses/{course_id}/archive", response_model=CourseOut)
+def archive_course(
     course_id: uuid.UUID,
     request: Request,
     db: Session = Depends(get_db),
     current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
-) -> None:
-    academics_service.delete_course(db, current, course_id, request.state.request_id)
+) -> CourseOut:
+    course = academics_service.archive_course(db, current, course_id, request.state.request_id)
+    return _course_out(db, course)
+
+
+@router.post("/courses/{course_id}/activate", response_model=CourseOut)
+def activate_course(
+    course_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> CourseOut:
+    course = academics_service.activate_course(db, current, course_id, request.state.request_id)
+    return _course_out(db, course)
 
 
 @router.get("/courses", response_model=list[CourseOut])

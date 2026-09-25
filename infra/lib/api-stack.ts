@@ -208,6 +208,16 @@ export class ApiStack extends cdk.Stack {
       integration,
     });
 
+    // Contenido público de apps/public_site sin autorizador (sección 14): lectura
+    // anónima para visitantes del sitio (p.ej. /public/news), separado a propósito
+    // de /api/v1/{proxy+} que sí exige el JWT de Cognito. Solo GET: este prefijo es
+    // de solo lectura, cualquier mutación vive bajo /api/v1/public-site/* protegida.
+    httpApi.addRoutes({
+      path: "/public/{proxy+}",
+      methods: [apigwv2.HttpMethod.GET],
+      integration,
+    });
+
     new cdk.CfnOutput(this, "HttpApiUrl", { value: httpApi.apiEndpoint });
     new cdk.CfnOutput(this, "FilesBucketName", { value: filesBucket.bucketName });
     new cdk.CfnOutput(this, "MigrationRunnerFunctionName", {

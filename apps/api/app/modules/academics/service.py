@@ -13,7 +13,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from app.core.deps import CurrentMembership
-from app.core.errors import NotFoundError, UnprocessableError
+from app.core.errors import ConflictError, NotFoundError, UnprocessableError
 from app.modules.academics import repository as academics_repo
 from app.modules.academics.models import (
     AcademicYear,
@@ -25,9 +25,41 @@ from app.modules.academics.models import (
     Section,
     Subject,
 )
-from app.modules.academics.schemas import AcademicYearCreate, CourseUpdate, EnrollmentCreate
+from app.modules.academics.schemas import (
+    AcademicYearCreate,
+    AcademicYearUpdate,
+    CourseUpdate,
+    EnrollmentCreate,
+    GradeLevelUpdate,
+    SectionUpdate,
+    SubjectUpdate,
+)
 from app.modules.identity import repository as identity_repo
 from app.modules.identity import service as identity_service
+
+
+def _normalize(value: str) -> str:
+    return " ".join(value.strip().lower().split())
+
+
+def _record_audit(
+    db: Session,
+    current: CurrentMembership,
+    *,
+    action: str,
+    target_type: str,
+    target_id: str,
+    request_id: str | None,
+) -> None:
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        request_id=request_id,
+    )
 
 
 def create_academic_year(
@@ -35,6 +67,10 @@ def create_academic_year(
 ) -> AcademicYear:
     if payload.ends_on <= payload.starts_on:
         raise UnprocessableError("ends_on debe ser posterior a starts_on.")
+    if academics_repo.find_academic_year_by_normalized_label(
+        db, current.school_id, _normalize(payload.label)
+    ):
+        raise ConflictError(f"Ya existe un año académico con la etiqueta '{payload.label}'.")
     year = AcademicYear(
         school_id=current.school_id,
         label=payload.label,
@@ -43,17 +79,63 @@ def create_academic_year(
     )
     db.add(year)
     db.flush()
-    identity_service.record_audit_event(
-        db,
-        school_id=current.school_id,
-        actor_id=current.membership.user_id,
-        action="academic_year.create",
-        target_type="academic_year",
-        target_id=str(year.id),
-        request_id=request_id,
+    _record_audit(
+        db, current, action="academic_year.create", target_type="academic_year",
+        target_id=str(year.id), request_id=request_id,
     )
     db.commit()
     db.refresh(year)
+    return year
+
+
+def update_academic_year(
+    db: Session,
+    current: CurrentMembership,
+    year_id: uuid.UUID,
+    payload: AcademicYearUpdate,
+    request_id: str | None,
+) -> AcademicYear:
+    year = academics_repo.get_academic_year(db, current.school_id, year_id)
+    if year is None:
+        raise NotFoundError("El año académico indicado no existe en este colegio.")
+    if payload.label is not None and academics_repo.find_academic_year_by_normalized_label(
+        db, current.school_id, _normalize(payload.label), exclude_id=year_id
+    ):
+        raise ConflictError(f"Ya existe un año académico con la etiqueta '{payload.label}'.")
+    starts_on = payload.starts_on if payload.starts_on is not None else year.starts_on
+    ends_on = payload.ends_on if payload.ends_on is not None else year.ends_on
+    if ends_on <= starts_on:
+        raise UnprocessableError("ends_on debe ser posterior a starts_on.")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(year, field, value)
+    _record_audit(
+        db, current, action="academic_year.update", target_type="academic_year",
+        target_id=str(year.id), request_id=request_id,
+    )
+    db.commit()
+    db.refresh(year)
+    return year
+
+
+def set_academic_year_status(
+    db: Session,
+    current: CurrentMembership,
+    year_id: uuid.UUID,
+    status: str,
+    request_id: str | None,
+) -> AcademicYear:
+    year = academics_repo.get_academic_year(db, current.school_id, year_id)
+    if year is None:
+        raise NotFoundError("El año académico indicado no existe en este colegio.")
+    if year.status != status:
+        year.status = status
+        _record_audit(
+            db, current, action=f"academic_year.{status}", target_type="academic_year",
+            target_id=str(year.id), request_id=request_id,
+        )
+        db.commit()
+        db.refresh(year)
     return year
 
 
@@ -76,6 +158,12 @@ def _require_academic_year(db: Session, school_id: uuid.UUID, year_id: uuid.UUID
 def create_grade_level(
     db: Session, current: CurrentMembership, name: str, sort_order: int
 ) -> GradeLevel:
+    if academics_repo.find_grade_level_by_normalized_name(
+        db, current.school_id, _normalize(name)
+    ):
+        raise ConflictError(f"Ya existe un grado llamado '{name}'.")
+    if sort_order < 1:
+        raise UnprocessableError("sort_order debe ser un entero positivo.")
     grade_level = GradeLevel(school_id=current.school_id, name=name, sort_order=sort_order)
     db.add(grade_level)
     db.commit()
@@ -83,9 +171,73 @@ def create_grade_level(
     return grade_level
 
 
+def update_grade_level(
+    db: Session, current: CurrentMembership, grade_level_id: uuid.UUID, payload: GradeLevelUpdate
+) -> GradeLevel:
+    grade_level = academics_repo.get_grade_level(db, current.school_id, grade_level_id)
+    if grade_level is None:
+        raise NotFoundError("El grado indicado no existe en este colegio.")
+    if payload.name is not None and academics_repo.find_grade_level_by_normalized_name(
+        db, current.school_id, _normalize(payload.name), exclude_id=grade_level_id
+    ):
+        raise ConflictError(f"Ya existe un grado llamado '{payload.name}'.")
+    if payload.sort_order is not None and payload.sort_order < 1:
+        raise UnprocessableError("sort_order debe ser un entero positivo.")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(grade_level, field, value)
+    db.commit()
+    db.refresh(grade_level)
+    return grade_level
+
+
+def set_grade_level_status(
+    db: Session, current: CurrentMembership, grade_level_id: uuid.UUID, status: str
+) -> GradeLevel:
+    grade_level = academics_repo.get_grade_level(db, current.school_id, grade_level_id)
+    if grade_level is None:
+        raise NotFoundError("El grado indicado no existe en este colegio.")
+    grade_level.status = status
+    db.commit()
+    db.refresh(grade_level)
+    return grade_level
+
+
 def create_subject(db: Session, current: CurrentMembership, code: str, name: str) -> Subject:
+    if academics_repo.find_subject_by_normalized_code(db, current.school_id, _normalize(code)):
+        raise ConflictError(f"Ya existe una materia con el código '{code}'.")
     subject = Subject(school_id=current.school_id, code=code, name=name)
     db.add(subject)
+    db.commit()
+    db.refresh(subject)
+    return subject
+
+
+def update_subject(
+    db: Session, current: CurrentMembership, subject_id: uuid.UUID, payload: SubjectUpdate
+) -> Subject:
+    subject = academics_repo.get_subject(db, current.school_id, subject_id)
+    if subject is None:
+        raise NotFoundError("La materia indicada no existe en este colegio.")
+    if payload.code is not None and academics_repo.find_subject_by_normalized_code(
+        db, current.school_id, _normalize(payload.code), exclude_id=subject_id
+    ):
+        raise ConflictError(f"Ya existe una materia con el código '{payload.code}'.")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(subject, field, value)
+    db.commit()
+    db.refresh(subject)
+    return subject
+
+
+def set_subject_status(
+    db: Session, current: CurrentMembership, subject_id: uuid.UUID, status: str
+) -> Subject:
+    subject = academics_repo.get_subject(db, current.school_id, subject_id)
+    if subject is None:
+        raise NotFoundError("La materia indicada no existe en este colegio.")
+    subject.status = status
     db.commit()
     db.refresh(subject)
     return subject
@@ -97,6 +249,10 @@ def create_section(
 ) -> Section:
     _require_academic_year(db, current.school_id, academic_year_id)
     _require_grade_level(db, current.school_id, grade_level_id)
+    if academics_repo.find_section_by_normalized_name(
+        db, current.school_id, academic_year_id, grade_level_id, _normalize(name)
+    ):
+        raise ConflictError(f"Ya existe una sección llamada '{name}' para ese año y grado.")
     section = Section(
         school_id=current.school_id,
         academic_year_id=academic_year_id,
@@ -104,6 +260,44 @@ def create_section(
         name=name,
     )
     db.add(section)
+    db.commit()
+    db.refresh(section)
+    return section
+
+
+def update_section(
+    db: Session, current: CurrentMembership, section_id: uuid.UUID, payload: SectionUpdate
+) -> Section:
+    section = academics_repo.get_section(db, current.school_id, section_id)
+    if section is None:
+        raise NotFoundError("La sección indicada no existe en este colegio.")
+    if payload.academic_year_id is not None:
+        _require_academic_year(db, current.school_id, payload.academic_year_id)
+    if payload.grade_level_id is not None:
+        _require_grade_level(db, current.school_id, payload.grade_level_id)
+
+    year_id = payload.academic_year_id or section.academic_year_id
+    grade_id = payload.grade_level_id or section.grade_level_id
+    name = payload.name if payload.name is not None else section.name
+    if academics_repo.find_section_by_normalized_name(
+        db, current.school_id, year_id, grade_id, _normalize(name), exclude_id=section_id
+    ):
+        raise ConflictError(f"Ya existe una sección llamada '{name}' para ese año y grado.")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(section, field, value)
+    db.commit()
+    db.refresh(section)
+    return section
+
+
+def set_section_status(
+    db: Session, current: CurrentMembership, section_id: uuid.UUID, status: str
+) -> Section:
+    section = academics_repo.get_section(db, current.school_id, section_id)
+    if section is None:
+        raise NotFoundError("La sección indicada no existe en este colegio.")
+    section.status = status
     db.commit()
     db.refresh(section)
     return section
@@ -192,28 +386,43 @@ def update_course(
     return course
 
 
-def delete_course(
+def archive_course(
     db: Session, current: CurrentMembership, course_id: uuid.UUID, request_id: str | None
-) -> None:
+) -> Course:
     """Baja lógica (sección 6): un curso con tareas/entregas/matrículas nunca se
-    borra físicamente; se marca `status="deleted"` y desaparece de los listados y
-    accesos (`academics_repo.get_course` y las consultas de `list_*` ya filtran por
-    esto), sin perder el historial para auditoría."""
+    borra físicamente; se marca `status="archived"`. Desaparece de los listados de
+    navegación/matrícula (`academics_repo.list_*`), pero sigue siendo resoluble por
+    ID (`academics_repo.get_course`) para no perder el historial de tareas/entregas
+    ya existentes."""
     course = academics_repo.get_course(db, current.school_id, course_id)
     if course is None:
         raise NotFoundError("El curso indicado no existe en este colegio.")
+    if course.status != "archived":
+        course.status = "archived"
+        _record_audit(
+            db, current, action="course.archive", target_type="course",
+            target_id=str(course.id), request_id=request_id,
+        )
+        db.commit()
+        db.refresh(course)
+    return course
 
-    course.status = "deleted"
-    identity_service.record_audit_event(
-        db,
-        school_id=current.school_id,
-        actor_id=current.membership.user_id,
-        action="course.delete",
-        target_type="course",
-        target_id=str(course.id),
-        request_id=request_id,
-    )
-    db.commit()
+
+def activate_course(
+    db: Session, current: CurrentMembership, course_id: uuid.UUID, request_id: str | None
+) -> Course:
+    course = academics_repo.get_course(db, current.school_id, course_id)
+    if course is None:
+        raise NotFoundError("El curso indicado no existe en este colegio.")
+    if course.status != "active":
+        course.status = "active"
+        _record_audit(
+            db, current, action="course.activate", target_type="course",
+            target_id=str(course.id), request_id=request_id,
+        )
+        db.commit()
+        db.refresh(course)
+    return course
 
 
 def assign_teacher(
@@ -291,6 +500,8 @@ def create_enrollment(
             raise UnprocessableError(
                 f"El curso {course_id} no existe en la sección indicada."
             )
+        if course.status == "archived":
+            raise UnprocessableError(f"El curso {course_id} está archivado; no admite matrículas.")
         if not academics_repo.course_has_active_teacher(db, course_id):
             raise UnprocessableError(
                 f"El curso {course_id} no tiene un docente encargado asignado; "

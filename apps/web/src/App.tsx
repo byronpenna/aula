@@ -11,6 +11,8 @@ import { AssignmentDetailPage } from "./routes/AssignmentDetailPage";
 import { MyStudentsPage } from "./routes/MyStudentsPage";
 import { StudentSubmissionsPage } from "./routes/StudentSubmissionsPage";
 import { AcademicsAdminPage } from "./routes/AcademicsAdminPage";
+import { AdminLayout } from "./routes/AdminLayout";
+import { AdminDashboardPage } from "./routes/AdminDashboardPage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -30,7 +32,10 @@ function App() {
               <Route path="/courses/:courseId" element={<CourseDetailPage />} />
               <Route path="/assignments/:assignmentId" element={<AssignmentDetailPage />} />
               <Route path="/my-students" element={<MyStudentsPage />} />
-              <Route path="/admin/academics" element={<AcademicsAdminPage />} />
+              <Route element={<AdminLayout />}>
+                <Route path="/admin" element={<AdminDashboardPage />} />
+                <Route path="/admin/academics" element={<AcademicsAdminPage />} />
+              </Route>
               <Route path="/students/:studentId/submissions" element={<StudentSubmissionsPage />} />
             </Route>
           </Routes>

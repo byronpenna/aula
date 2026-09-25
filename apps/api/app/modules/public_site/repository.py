@@ -13,6 +13,15 @@ def list_news(db: Session) -> list[NewsPost]:
     return list(db.execute(stmt).scalars().all())
 
 
+def list_published_news(db: Session) -> list[NewsPost]:
+    stmt = (
+        select(NewsPost)
+        .where(NewsPost.status == "published")
+        .order_by(NewsPost.published_at.desc())
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
 def get_news(db: Session, news_id: uuid.UUID) -> NewsPost | None:
     return db.get(NewsPost, news_id)
 

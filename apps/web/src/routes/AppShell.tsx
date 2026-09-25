@@ -18,12 +18,26 @@ export function AppShell() {
   const roles = currentMembership?.roles ?? [];
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
+    <div className="min-h-screen bg-brand-50/40">
+      <header className="border-b border-brand-100 bg-white">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-4">
-            <span className="font-semibold text-slate-900">Aula Virtual</span>
-            <nav className="flex gap-3 text-sm text-slate-600">
+            <Link className="focus-ring flex items-center gap-2.5 rounded-md" to="/">
+              <img
+                src="/img/logo.jpg"
+                alt="Colegio Linares"
+                width={40}
+                height={40}
+                className="h-10 w-10 rounded-full object-cover shadow-sm"
+              />
+              <span className="leading-tight">
+                <span className="block font-display text-sm font-bold text-brand-900">
+                  Colegio Linares
+                </span>
+                <span className="block text-xs text-brand-700">Aula Virtual</span>
+              </span>
+            </Link>
+            <nav className="flex gap-3 text-sm text-brand-700">
               <Link className="focus-ring rounded px-1" to="/">
                 Inicio
               </Link>
@@ -36,7 +50,7 @@ export function AppShell() {
                 </Link>
               )}
               {(roles.includes("school_admin") || roles.includes("coordinator")) && (
-                <Link className="focus-ring rounded px-1" to="/admin/academics">
+                <Link className="focus-ring rounded px-1" to="/admin">
                   Administración
                 </Link>
               )}
@@ -63,7 +77,7 @@ export function AppShell() {
               {me.display_name}
               {roles.length > 0 && ` · ${roles.join(", ")}`}
             </span>
-            <button className="focus-ring rounded text-sky-700 underline" onClick={logout}>
+            <button className="focus-ring rounded text-brand-700 underline" onClick={logout}>
               Salir
             </button>
           </div>

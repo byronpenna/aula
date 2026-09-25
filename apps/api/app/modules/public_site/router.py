@@ -12,9 +12,24 @@ from app.modules.identity.models import User
 from app.modules.public_site import repository as public_site_repo
 from app.modules.public_site import service as public_site_service
 from app.modules.public_site.models import NewsPost
-from app.modules.public_site.schemas import NewsPostCreate, NewsPostOut, NewsPostUpdate
+from app.modules.public_site.schemas import (
+    NewsPostCreate,
+    NewsPostOut,
+    NewsPostUpdate,
+    PublicNewsPostOut,
+)
 
 router = APIRouter(tags=["public-site"])
+
+# Sin autenticación a propósito (sección 5/14): montado fuera de /api/v1 en
+# app/main.py, y sin autorizador en el HTTP API Gateway (infra/lib/api-stack.ts,
+# ruta /public/{proxy+}) — el resto de /api/v1/* sí exige JWT de Cognito ahí.
+public_router = APIRouter(tags=["public-site-public"])
+
+
+@public_router.get("/public/news", response_model=list[PublicNewsPostOut])
+def list_published_news(db: Session = Depends(get_db)) -> list[NewsPost]:
+    return public_site_repo.list_published_news(db)
 
 
 @router.get("/public-site/news", response_model=list[NewsPostOut])

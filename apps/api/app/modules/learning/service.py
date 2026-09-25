@@ -38,6 +38,8 @@ def create_assignment(
 ) -> Assignment:
     course = _require_course(db, current, course_id)
     academics_service.require_course_access(db, current, user_id, course)
+    if course.status == "archived":
+        raise UnprocessableError("El curso está archivado; no admite tareas nuevas.")
     if payload.max_score <= 0:
         raise UnprocessableError("max_score debe ser mayor que cero.")
 

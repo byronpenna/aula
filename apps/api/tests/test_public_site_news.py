@@ -76,3 +76,32 @@ def test_user_without_public_site_permission_is_forbidden(db_session, client, un
         "/api/v1/public-site/news", headers=headers, json={"title": "No autorizado", "body": "..."}
     )
     assert resp.status_code == 403
+
+
+def test_public_endpoint_only_lists_published_without_auth(db_session, client, unique_suffix):
+    f.ensure_role_catalog(db_session)
+    school = f.create_school(db_session, f"Escuela {unique_suffix}")
+    admin = f.create_user(db_session, display_name="Admin", cognito_sub=f"adm-{unique_suffix}")
+    f.add_membership(db_session, school=school, user=admin, role_codes=["school_admin"])
+    db_session.commit()
+    headers = f.auth_headers(admin, school_id=school.id)
+
+    draft = client.post(
+        "/api/v1/public-site/news", headers=headers, json={"title": "Borrador", "body": "..."}
+    ).json()
+    published = client.post(
+        "/api/v1/public-site/news",
+        headers=headers,
+        json={"title": "Publicada", "body": "Contenido visible.", "status": "published"},
+    ).json()
+
+    # Sin header Authorization: el endpoint público no exige autenticación.
+    resp = client.get("/public/news")
+    assert resp.status_code == 200, resp.text
+    slugs = [item["slug"] for item in resp.json()]
+    assert published["slug"] in slugs
+    assert draft["slug"] not in slugs
+    # No expone campos administrativos (sección 14).
+    exposed_item = next(item for item in resp.json() if item["slug"] == published["slug"])
+    assert "author_user_id" not in exposed_item
+    assert "status" not in exposed_item

@@ -24,7 +24,7 @@ export function CallbackPage() {
             <p role="alert" className="mb-4 text-sm text-red-600">
               {error}
             </p>
-            <a className="focus-ring rounded text-sky-700 underline" href="/login">
+            <a className="focus-ring rounded text-brand-700 underline" href="/login">
               Volver a intentar
             </a>
           </>

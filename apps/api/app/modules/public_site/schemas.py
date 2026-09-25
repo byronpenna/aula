@@ -41,3 +41,18 @@ class NewsPostOut(BaseModel):
     author_user_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+
+
+class PublicNewsPostOut(BaseModel):
+    """Forma expuesta sin autenticación (sección 14): sin `author_user_id`/`status`/
+    timestamps administrativos, solo lo que el sitio público necesita mostrar."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    slug: str
+    excerpt: str | None
+    body: str
+    cover_image_url: str | None
+    published_at: datetime | None

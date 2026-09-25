@@ -48,7 +48,7 @@ def create_news(db: Session, author_user_id: uuid.UUID, payload: NewsPostCreate)
         author_user_id=author_user_id,
     )
     db.add(news)
-    db.flush()
+    db.commit()
     return news
 
 
@@ -73,7 +73,7 @@ def update_news(db: Session, news_id: uuid.UUID, payload: NewsPostUpdate) -> New
     elif news.status == "draft":
         news.published_at = None
 
-    db.flush()
+    db.commit()
     return news
 
 
@@ -82,7 +82,7 @@ def delete_news(db: Session, news_id: uuid.UUID) -> None:
     if news is None:
         raise NotFoundError("La noticia indicada no existe.")
     db.delete(news)
-    db.flush()
+    db.commit()
 
 
 def require_news(db: Session, news_id: uuid.UUID) -> NewsPost:

@@ -30,7 +30,7 @@ export function MyStudentsPage() {
           <li key={student.student_id}>
             <Link
               to={`/students/${student.student_id}/submissions`}
-              className="focus-ring block rounded-lg border border-slate-200 bg-white p-4 hover:border-sky-400"
+              className="focus-ring block rounded-lg border border-slate-200 bg-white p-4 hover:border-brand-400"
             >
               <p className="font-medium text-slate-900">
                 {student.display_name ?? student.student_number}

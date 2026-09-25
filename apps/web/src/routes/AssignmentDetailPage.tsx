@@ -140,7 +140,7 @@ export function AssignmentDetailPage() {
               type="button"
               onClick={onSubmit}
               disabled={status === "submitted"}
-              className="focus-ring rounded-md bg-sky-600 px-4 py-1.5 font-medium text-white hover:bg-sky-700 disabled:opacity-60"
+              className="focus-ring rounded-md bg-brand-600 px-4 py-1.5 font-medium text-white hover:bg-brand-700 disabled:opacity-60"
             >
               {status === "submitted" ? "Entregado" : "Entregar"}
             </button>
@@ -217,7 +217,7 @@ export function AssignmentDetailPage() {
                           onClick={() =>
                             setExpandedSubmissionId((id) => (id === s.id ? null : s.id))
                           }
-                          className="focus-ring rounded text-sky-700 underline hover:text-sky-900"
+                          className="focus-ring rounded text-brand-700 underline hover:text-brand-900"
                         >
                           {expandedSubmissionId === s.id ? "Ocultar" : "Ver"}
                         </button>
@@ -262,7 +262,7 @@ function SaveIndicator({ state }: { state: SaveState }) {
   const color: Record<SaveState, string> = {
     idle: "text-slate-400",
     pending: "text-slate-500",
-    saving: "text-sky-600",
+    saving: "text-brand-600",
     saved: "text-emerald-600",
     offline: "text-red-600",
     conflict: "text-amber-700",

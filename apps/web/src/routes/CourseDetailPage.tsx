@@ -156,7 +156,7 @@ export function CourseDetailPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="focus-ring mt-3 rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
+            className="focus-ring mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
           >
             Guardar borrador
           </button>

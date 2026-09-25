@@ -10,6 +10,7 @@ from app.modules.academics.router import router as academics_router
 from app.modules.files.router import router as files_router
 from app.modules.identity.router import router as identity_router
 from app.modules.learning.router import router as learning_router
+from app.modules.public_site.router import public_router as public_site_public_router
 from app.modules.public_site.router import router as public_site_router
 
 settings = get_settings()
@@ -38,6 +39,9 @@ app.include_router(academics_router, prefix=api_v1)
 app.include_router(learning_router, prefix=api_v1)
 app.include_router(files_router, prefix=api_v1)
 app.include_router(public_site_router, prefix=api_v1)
+# Sin prefijo /api/v1 a propósito: en infra/lib/api-stack.ts esta ruta va sin
+# autorizador de Cognito (visitantes anónimos del sitio público).
+app.include_router(public_site_public_router)
 
 
 @app.get("/healthz", tags=["ops"])

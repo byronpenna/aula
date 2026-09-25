@@ -7,7 +7,7 @@ import { ApiError } from "../lib/apiClient";
 export function LoadingState({ label = "Cargando…" }: { label?: string }) {
   return (
     <div role="status" className="flex items-center gap-2 p-6 text-slate-500">
-      <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-sky-600" />
+      <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600" />
       <span>{label}</span>
     </div>
   );

@@ -46,8 +46,10 @@ def test_teacher_cannot_manage_courses(db_session, client, unique_suffix):
     )
     assert update_resp.status_code == 403
 
-    delete_resp = client.delete(f"/api/v1/courses/{structure['course'].id}", headers=headers)
-    assert delete_resp.status_code == 403
+    archive_resp = client.post(
+        f"/api/v1/courses/{structure['course'].id}/archive", headers=headers
+    )
+    assert archive_resp.status_code == 403
 
 
 def test_course_requires_end_after_start(db_session, client, unique_suffix):
@@ -67,7 +69,7 @@ def test_course_requires_end_after_start(db_session, client, unique_suffix):
     assert resp.status_code == 422
 
 
-def test_admin_can_update_and_soft_delete_course(db_session, client, unique_suffix):
+def test_admin_can_update_and_archive_course(db_session, client, unique_suffix):
     f.ensure_role_catalog(db_session)
     school = f.create_school(db_session, f"Escuela {unique_suffix}")
     structure = f.create_academic_structure(db_session, school)
@@ -105,14 +107,25 @@ def test_admin_can_update_and_soft_delete_course(db_session, client, unique_suff
     )
     assert bad_update_resp.status_code == 422
 
-    delete_resp = client.delete(f"/api/v1/courses/{course_id}", headers=headers)
-    assert delete_resp.status_code == 204
+    archive_resp = client.post(f"/api/v1/courses/{course_id}/archive", headers=headers)
+    assert archive_resp.status_code == 200, archive_resp.text
+    assert archive_resp.json()["status"] == "archived"
 
+    # Un curso archivado sigue siendo resoluble por ID (historial de tareas/entregas),
+    # solo desaparece del listado de navegación/matrícula.
     get_resp = client.get(f"/api/v1/courses/{course_id}", headers=headers)
-    assert get_resp.status_code == 404
+    assert get_resp.status_code == 200
+    assert get_resp.json()["status"] == "archived"
 
     list_resp = client.get("/api/v1/courses", headers=headers)
     assert course_id not in [c["id"] for c in list_resp.json()]
+
+    activate_resp = client.post(f"/api/v1/courses/{course_id}/activate", headers=headers)
+    assert activate_resp.status_code == 200
+    assert activate_resp.json()["status"] == "active"
+
+    list_resp_after = client.get("/api/v1/courses", headers=headers)
+    assert course_id in [c["id"] for c in list_resp_after.json()]
 
 
 def test_enrollment_blocked_without_teacher_assigned(db_session, client, unique_suffix):
@@ -193,3 +206,63 @@ def test_assign_teacher_requires_teacher_role(db_session, client, unique_suffix)
         json={"teacher_user_id": str(guardian.id)},
     )
     assert resp.status_code == 422
+
+
+def test_archived_course_blocks_new_enrollments_and_assignments(db_session, client, unique_suffix):
+    f.ensure_role_catalog(db_session)
+    school = f.create_school(db_session, f"Escuela {unique_suffix}")
+    structure = f.create_academic_structure(db_session, school)
+    admin = f.create_user(db_session, display_name="Admin", cognito_sub=f"a-{unique_suffix}")
+    f.add_membership(db_session, school=school, user=admin, role_codes=["school_admin"])
+    teacher = f.create_user(db_session, display_name="Docente", cognito_sub=f"t-{unique_suffix}")
+    f.add_membership(db_session, school=school, user=teacher, role_codes=["teacher"])
+    f.assign_teacher(db_session, school=school, course=structure["course"], teacher_user=teacher)
+    db_session.commit()
+
+    admin_headers = f.auth_headers(admin, school_id=school.id)
+    archive_resp = client.post(
+        f"/api/v1/courses/{structure['course'].id}/archive", headers=admin_headers
+    )
+    assert archive_resp.status_code == 200
+
+    from app.modules.identity.models import StudentProfile
+
+    profile = StudentProfile(
+        school_id=school.id, user_id=None, student_number=f"S-{unique_suffix}"
+    )
+    db_session.add(profile)
+    db_session.commit()
+
+    enrollment_resp = client.post(
+        "/api/v1/enrollments",
+        headers=admin_headers,
+        json={
+            "academic_year_id": str(structure["year"].id),
+            "student_id": str(profile.id),
+            "section_id": str(structure["section"].id),
+            "starts_on": "2026-01-15",
+            "course_ids": [str(structure["course"].id)],
+        },
+    )
+    assert enrollment_resp.status_code == 422
+
+    teacher_headers = f.auth_headers(teacher, school_id=school.id)
+    assignment_resp = client.post(
+        f"/api/v1/courses/{structure['course'].id}/assignments",
+        headers=teacher_headers,
+        json={
+            "title": "Tarea nueva",
+            "instructions": "",
+            "due_at": "2026-12-01T00:00:00+00:00",
+            "max_score": "100",
+            "allow_late": False,
+        },
+    )
+    assert assignment_resp.status_code == 422
+
+    # El docente sigue pudiendo ver el curso archivado (historial), solo no puede
+    # crear contenido nuevo en él.
+    course_resp = client.get(
+        f"/api/v1/courses/{structure['course'].id}", headers=teacher_headers
+    )
+    assert course_resp.status_code == 200

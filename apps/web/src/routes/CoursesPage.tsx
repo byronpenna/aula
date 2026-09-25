@@ -29,7 +29,7 @@ export function CoursesPage() {
           <li key={course.id}>
             <Link
               to={`/courses/${course.id}`}
-              className="focus-ring block rounded-lg border border-slate-200 bg-white p-4 hover:border-sky-400"
+              className="focus-ring block rounded-lg border border-slate-200 bg-white p-4 hover:border-brand-400"
             >
               <p className="font-medium text-slate-900">Curso {course.id.slice(0, 8)}</p>
               <p className="text-sm text-slate-500">Estado: {course.status}</p>

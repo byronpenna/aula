@@ -60,12 +60,14 @@ export interface GradeLevel {
   id: string;
   name: string;
   sort_order: number;
+  status: string;
 }
 
 export interface Subject {
   id: string;
   code: string;
   name: string;
+  status: string;
 }
 
 export interface Section {
@@ -73,6 +75,7 @@ export interface Section {
   academic_year_id: string;
   grade_level_id: string;
   name: string;
+  status: string;
 }
 
 export interface CourseTeacher {

@@ -53,7 +53,7 @@ function CognitoLoginPanel({ onLogin }: { onLogin: () => Promise<void> }) {
           type="button"
           onClick={handleClick}
           disabled={isRedirecting}
-          className="focus-ring w-full rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
+          className="focus-ring w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
         >
           {isRedirecting ? "Redirigiendo…" : "Iniciar sesión"}
         </button>
@@ -133,7 +133,7 @@ function LocalLoginForm({
         <button
           type="submit"
           disabled={isSubmitting}
-          className="focus-ring mt-5 w-full rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
+          className="focus-ring mt-5 w-full rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
         >
           {isSubmitting ? "Ingresando…" : "Ingresar"}
         </button>
