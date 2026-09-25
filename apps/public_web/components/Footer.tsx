@@ -72,6 +72,11 @@ export function Footer() {
               </a>
             </li>
             <li>
+              <a href="/oferta-academica" className="focus-ring rounded hover:text-white">
+                Oferta académica
+              </a>
+            </li>
+            <li>
               <a href="/#comunidad" className="focus-ring rounded hover:text-white">
                 Comunidad
               </a>

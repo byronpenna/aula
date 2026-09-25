@@ -16,6 +16,7 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://public-web.dy880wnmeoiy1.amplifyapp.com"),
   title: "Colegio Coronel Francisco Linares",
   description:
     "Colegio Coronel Francisco Linares, Apopa: educación integral desde preescolar hasta bachillerato, bajo el lema Dios, Patria y Ciencia.",

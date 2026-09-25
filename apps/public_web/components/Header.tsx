@@ -4,6 +4,7 @@ import { AULA_VIRTUAL_URL, SCHOOL_SHORT_NAME } from "@/lib/config";
 
 const NAV_LINKS = [
   { href: "/#programas", label: "Programas" },
+  { href: "/oferta-academica", label: "Oferta académica" },
   { href: "/#comunidad", label: "Comunidad" },
   { href: "/noticias", label: "Noticias" },
   { href: "/#contacto", label: "Contacto" },
@@ -25,7 +26,7 @@ export function Header() {
           <span className="font-display text-lg font-bold text-brand-900">{SCHOOL_SHORT_NAME}</span>
         </Link>
 
-        <nav className="hidden items-center gap-8 md:flex">
+        <nav className="hidden items-center gap-5 lg:flex">
           {NAV_LINKS.map((link) => (
             <a
               key={link.href}

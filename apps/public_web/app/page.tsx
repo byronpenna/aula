@@ -2,6 +2,7 @@ import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
 import { Stats } from "@/components/Stats";
 import { Features } from "@/components/Features";
+import { OfertaAcademicaPreview } from "@/components/oferta/OfertaAcademicaPreview";
 import { Community } from "@/components/Community";
 import { SocialFeed } from "@/components/SocialFeed";
 import { Contact } from "@/components/Contact";
@@ -16,6 +17,7 @@ export default function Home() {
         <Hero />
         <Stats />
         <Features />
+        <OfertaAcademicaPreview />
         <Community />
         <SocialFeed />
         <Contact />

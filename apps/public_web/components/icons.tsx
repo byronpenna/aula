@@ -144,6 +144,55 @@ export function TikTokIcon({ className }: { className?: string }) {
   );
 }
 
+export function ChatIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v7A2.5 2.5 0 0 1 17.5 15H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 12.5v-7Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+export function PaletteIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.4-1.9-.2-.5-.1-1.1.3-1.5.4-.4 1-.5 1.5-.3.9.3 1.8-.3 1.8-1.3v-.2c0-3.8-2.3-6.4-5-6.4Z"
+        fill="currentColor"
+        opacity=".55"
+      />
+      <circle cx="8" cy="10" r="1.4" fill="currentColor" />
+      <circle cx="12" cy="7.5" r="1.4" fill="currentColor" />
+      <circle cx="16" cy="10" r="1.4" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function MicIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" />
+      <path
+        d="M6 11a6 6 0 0 0 12 0"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path d="M12 17v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path
+        d="M9 21h6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        opacity=".55"
+      />
+    </svg>
+  );
+}
+
 export function ClockIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
