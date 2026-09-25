@@ -67,13 +67,18 @@ export function Footer() {
           <p className="text-sm font-semibold text-white">Enlaces</p>
           <ul className="mt-3 space-y-2 text-sm text-brand-300">
             <li>
-              <a href="#programas" className="focus-ring rounded hover:text-white">
+              <a href="/#programas" className="focus-ring rounded hover:text-white">
                 Programas
               </a>
             </li>
             <li>
-              <a href="#comunidad" className="focus-ring rounded hover:text-white">
+              <a href="/#comunidad" className="focus-ring rounded hover:text-white">
                 Comunidad
+              </a>
+            </li>
+            <li>
+              <a href="/noticias" className="focus-ring rounded hover:text-white">
+                Noticias
               </a>
             </li>
             <li>

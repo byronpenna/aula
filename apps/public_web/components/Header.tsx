@@ -3,9 +3,10 @@ import Link from "next/link";
 import { AULA_VIRTUAL_URL, SCHOOL_SHORT_NAME } from "@/lib/config";
 
 const NAV_LINKS = [
-  { href: "#programas", label: "Programas" },
-  { href: "#comunidad", label: "Comunidad" },
-  { href: "#contacto", label: "Contacto" },
+  { href: "/#programas", label: "Programas" },
+  { href: "/#comunidad", label: "Comunidad" },
+  { href: "/noticias", label: "Noticias" },
+  { href: "/#contacto", label: "Contacto" },
 ];
 
 export function Header() {
