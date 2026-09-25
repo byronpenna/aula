@@ -35,6 +35,16 @@ export interface Course {
   section_id: string;
   subject_id: string;
   academic_year_id: string;
+  starts_on: string;
+  ends_on: string;
+  status: string;
+  teacher_user_ids: string[];
+}
+
+export interface Teacher {
+  id: string;
+  display_name: string;
+  email: string | null;
   status: string;
 }
 

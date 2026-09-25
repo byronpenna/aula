@@ -22,6 +22,24 @@ from app.modules.identity.models import (
 )
 
 
+def list_users_with_role(db: Session, school_id: uuid.UUID, role_code: str) -> list[User]:
+    """Miembros activos del colegio con un rol dado (p. ej. docentes disponibles para
+    asignar a un curso, sección 6/9)."""
+    stmt = (
+        select(User)
+        .join(SchoolMembership, SchoolMembership.user_id == User.id)
+        .join(MembershipRole, MembershipRole.membership_id == SchoolMembership.id)
+        .join(Role, Role.id == MembershipRole.role_id)
+        .where(
+            SchoolMembership.school_id == school_id,
+            SchoolMembership.status == "active",
+            Role.code == role_code,
+        )
+        .order_by(User.display_name)
+    )
+    return list(db.execute(stmt).unique().scalars().all())
+
+
 def get_user_by_cognito_sub(db: Session, cognito_sub: str) -> User | None:
     stmt = select(User).where(User.cognito_sub == cognito_sub)
     return db.execute(stmt).scalar_one_or_none()

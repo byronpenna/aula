@@ -49,7 +49,9 @@ class Settings(BaseSettings):
     local_jwt_ttl_seconds: int = 3600
 
     files_bucket: str = "aula-files-local"
-    allowed_origins: list[str] = ["http://localhost:5173"]
+    # :5173 es apps/web (Vite) en dev; :3000 es apps/public_web (Next.js) en dev,
+    # cuyo área admin llama a esta API (sección 7).
+    allowed_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     @model_validator(mode="after")
     def _guard_local_auth(self) -> Settings:

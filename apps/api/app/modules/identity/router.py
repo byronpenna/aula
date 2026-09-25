@@ -10,7 +10,7 @@ from app.core.deps import (
     get_current_user,
     require_permission,
 )
-from app.core.permissions import ENROLLMENT_MANAGE
+from app.core.permissions import ACADEMICS_MANAGE, ENROLLMENT_MANAGE
 from app.db.session import get_db
 from app.modules.identity import repository as identity_repo
 from app.modules.identity import service as identity_service
@@ -23,6 +23,7 @@ from app.modules.identity.schemas import (
     MeOut,
     PermissionsOut,
     StudentProfileOut,
+    UserOut,
 )
 
 router = APIRouter(tags=["identity"])
@@ -79,6 +80,16 @@ def list_students(
         StudentProfileOut(id=profile.id, student_number=profile.student_number, display_name=name)
         for profile, name in rows
     ]
+
+
+@router.get("/teachers", response_model=list[UserOut])
+def list_teachers(
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> list[User]:
+    """Docentes con membresía activa en el colegio, para el selector de "docente
+    encargado" al asignar un curso (sección 9)."""
+    return identity_repo.list_users_with_role(db, current.school_id, "teacher")
 
 
 @router.post("/auth/local/token", response_model=LocalLoginResponse)

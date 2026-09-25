@@ -56,7 +56,13 @@ def test_full_vertical_slice(db_session, client, unique_suffix):
     course_resp = client.post(
         "/api/v1/courses",
         headers=admin_headers,
-        json={"section_id": section_id, "subject_id": subject_id, "academic_year_id": year_id},
+        json={
+            "section_id": section_id,
+            "subject_id": subject_id,
+            "academic_year_id": year_id,
+            "starts_on": "2026-01-15",
+            "ends_on": "2026-11-15",
+        },
     )
     assert course_resp.status_code == 200
     course_id = course_resp.json()["id"]

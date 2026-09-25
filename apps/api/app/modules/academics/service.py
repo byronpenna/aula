@@ -25,7 +25,7 @@ from app.modules.academics.models import (
     Section,
     Subject,
 )
-from app.modules.academics.schemas import AcademicYearCreate, EnrollmentCreate
+from app.modules.academics.schemas import AcademicYearCreate, CourseUpdate, EnrollmentCreate
 from app.modules.identity import repository as identity_repo
 from app.modules.identity import service as identity_service
 
@@ -111,7 +111,8 @@ def create_section(
 
 def create_course(
     db: Session, current: CurrentMembership, section_id: uuid.UUID,
-    subject_id: uuid.UUID, academic_year_id: uuid.UUID,
+    subject_id: uuid.UUID, academic_year_id: uuid.UUID, starts_on, ends_on,
+    request_id: str | None,
 ) -> Course:
     section = academics_repo.get_section(db, current.school_id, section_id)
     if section is None:
@@ -120,17 +121,99 @@ def create_course(
     if subject is None:
         raise NotFoundError("La materia indicada no existe en este colegio.")
     _require_academic_year(db, current.school_id, academic_year_id)
+    if ends_on <= starts_on:
+        raise UnprocessableError("ends_on debe ser posterior a starts_on.")
 
     course = Course(
         school_id=current.school_id,
         section_id=section_id,
         subject_id=subject_id,
         academic_year_id=academic_year_id,
+        starts_on=starts_on,
+        ends_on=ends_on,
     )
     db.add(course)
+    db.flush()
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="course.create",
+        target_type="course",
+        target_id=str(course.id),
+        request_id=request_id,
+    )
     db.commit()
     db.refresh(course)
     return course
+
+
+def update_course(
+    db: Session,
+    current: CurrentMembership,
+    course_id: uuid.UUID,
+    payload: CourseUpdate,
+    request_id: str | None,
+) -> Course:
+    course = academics_repo.get_course(db, current.school_id, course_id)
+    if course is None:
+        raise NotFoundError("El curso indicado no existe en este colegio.")
+
+    if payload.section_id is not None:
+        section = academics_repo.get_section(db, current.school_id, payload.section_id)
+        if section is None:
+            raise NotFoundError("La sección indicada no existe en este colegio.")
+    if payload.subject_id is not None:
+        subject = academics_repo.get_subject(db, current.school_id, payload.subject_id)
+        if subject is None:
+            raise NotFoundError("La materia indicada no existe en este colegio.")
+    if payload.academic_year_id is not None:
+        _require_academic_year(db, current.school_id, payload.academic_year_id)
+
+    starts_on = payload.starts_on if payload.starts_on is not None else course.starts_on
+    ends_on = payload.ends_on if payload.ends_on is not None else course.ends_on
+    if ends_on <= starts_on:
+        raise UnprocessableError("ends_on debe ser posterior a starts_on.")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(course, field, value)
+
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="course.update",
+        target_type="course",
+        target_id=str(course.id),
+        request_id=request_id,
+    )
+    db.commit()
+    db.refresh(course)
+    return course
+
+
+def delete_course(
+    db: Session, current: CurrentMembership, course_id: uuid.UUID, request_id: str | None
+) -> None:
+    """Baja lógica (sección 6): un curso con tareas/entregas/matrículas nunca se
+    borra físicamente; se marca `status="deleted"` y desaparece de los listados y
+    accesos (`academics_repo.get_course` y las consultas de `list_*` ya filtran por
+    esto), sin perder el historial para auditoría."""
+    course = academics_repo.get_course(db, current.school_id, course_id)
+    if course is None:
+        raise NotFoundError("El curso indicado no existe en este colegio.")
+
+    course.status = "deleted"
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="course.delete",
+        target_type="course",
+        target_id=str(course.id),
+        request_id=request_id,
+    )
+    db.commit()
 
 
 def assign_teacher(
@@ -142,6 +225,16 @@ def assign_teacher(
     membership = identity_repo.get_active_membership(db, teacher_user_id, current.school_id)
     if membership is None:
         raise UnprocessableError("El docente no tiene una membresía activa en este colegio.")
+    if not any(mr.role.code == "teacher" for mr in membership.roles):
+        raise UnprocessableError("El usuario indicado no tiene el rol de docente en este colegio.")
+
+    existing = academics_repo.get_course_teacher(db, course_id, teacher_user_id)
+    if existing is not None:
+        if existing.status != "active":
+            existing.status = "active"
+            db.commit()
+            db.refresh(existing)
+        return existing
 
     course_teacher = CourseTeacher(
         school_id=current.school_id, course_id=course_id, teacher_user_id=teacher_user_id
@@ -189,6 +282,21 @@ def create_enrollment(
     if student is None or student.school_id != current.school_id:
         raise NotFoundError("El alumno indicado no existe en este colegio.")
 
+    # Antes de mutar nada, valida TODOS los cursos solicitados (sección 7: todo se
+    # confirma en una transacción o nada) — un curso sin docente encargado asignado
+    # no puede recibir matrículas.
+    for course_id in payload.course_ids:
+        course = academics_repo.get_course(db, current.school_id, course_id)
+        if course is None or course.section_id != payload.section_id:
+            raise UnprocessableError(
+                f"El curso {course_id} no existe en la sección indicada."
+            )
+        if not academics_repo.course_has_active_teacher(db, course_id):
+            raise UnprocessableError(
+                f"El curso {course_id} no tiene un docente encargado asignado; "
+                "asigna uno antes de matricular alumnos."
+            )
+
     enrollment = Enrollment(
         school_id=current.school_id,
         academic_year_id=payload.academic_year_id,
@@ -200,11 +308,6 @@ def create_enrollment(
     db.flush()
 
     for course_id in payload.course_ids:
-        course = academics_repo.get_course(db, current.school_id, course_id)
-        if course is None or course.section_id != payload.section_id:
-            raise UnprocessableError(
-                f"El curso {course_id} no existe en la sección indicada."
-            )
         # Idempotente (sección 7, igual que el resto de la matrícula transaccional):
         # matricular otra vez en un curso donde ya está inscrito no debe romper la
         # transacción completa con un IntegrityError de la constraint única.

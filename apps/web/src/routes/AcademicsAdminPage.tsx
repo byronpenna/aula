@@ -13,6 +13,7 @@ import type {
   Section,
   StudentProfile,
   Subject,
+  Teacher,
 } from "../lib/types";
 import { ErrorState, ForbiddenState, LoadingState } from "../components/States";
 
@@ -410,16 +411,37 @@ function SectionsSection() {
 }
 
 // --- Cursos --------------------------------------------------------------
+// Solo quien administra la estructura académica (school_admin/coordinator, ver
+// `academics:manage` en AcademicsAdminPage) llega a esta sección: crea, edita y
+// elimina cursos (baja lógica en el backend), y debe asignar un docente encargado
+// antes de que EnrollmentsSection permita matricular alumnos en ese curso.
 
-const courseSchema = z.object({
-  academic_year_id: z.string().min(1, "Requerido."),
-  section_id: z.string().min(1, "Requerido."),
-  subject_id: z.string().min(1, "Requerido."),
-});
+const courseSchema = z
+  .object({
+    academic_year_id: z.string().min(1, "Requerido."),
+    section_id: z.string().min(1, "Requerido."),
+    subject_id: z.string().min(1, "Requerido."),
+    starts_on: z.string().min(1, "Requerido."),
+    ends_on: z.string().min(1, "Requerido."),
+  })
+  .refine((v) => v.ends_on > v.starts_on, {
+    message: "Debe ser posterior a la fecha de inicio.",
+    path: ["ends_on"],
+  });
 type CourseForm = z.infer<typeof courseSchema>;
 
-function CoursesSection() {
-  const queryClient = useQueryClient();
+const courseEditSchema = z
+  .object({
+    starts_on: z.string().min(1, "Requerido."),
+    ends_on: z.string().min(1, "Requerido."),
+  })
+  .refine((v) => v.ends_on > v.starts_on, {
+    message: "Debe ser posterior a la fecha de inicio.",
+    path: ["ends_on"],
+  });
+type CourseEditForm = z.infer<typeof courseEditSchema>;
+
+function useCoursesQueryData() {
   const years = useQuery<AcademicYear[]>({
     queryKey: ["academic-years"],
     queryFn: async () => (await apiClient.get("/academic-years")).data,
@@ -436,6 +458,29 @@ function CoursesSection() {
     queryKey: ["subjects"],
     queryFn: async () => (await apiClient.get("/subjects")).data,
   });
+  const teachers = useQuery<Teacher[]>({
+    queryKey: ["teachers"],
+    queryFn: async () => (await apiClient.get("/teachers")).data,
+  });
+
+  const yearLabel = (id: string) => years.data?.find((y) => y.id === id)?.label ?? id.slice(0, 8);
+  const subjectName = (id: string) => subjects.data?.find((s) => s.id === id)?.name ?? id.slice(0, 8);
+  const sectionLabel = (id: string) => {
+    const section = sections.data?.find((s) => s.id === id);
+    if (!section) return id.slice(0, 8);
+    const grade = grades.data?.find((g) => g.id === section.grade_level_id)?.name ?? "";
+    return `${grade} "${section.name}"`.trim();
+  };
+  const teacherName = (id: string) =>
+    teachers.data?.find((t) => t.id === id)?.display_name ?? id.slice(0, 8);
+
+  return { years, sections, grades, subjects, teachers, yearLabel, subjectName, sectionLabel, teacherName };
+}
+
+function CoursesSection() {
+  const queryClient = useQueryClient();
+  const { years, sections, subjects, teachers, yearLabel, subjectName, sectionLabel, teacherName } =
+    useCoursesQueryData();
   const { data, isLoading, error } = useQuery<Course[]>({
     queryKey: ["courses"],
     queryFn: async () => (await apiClient.get("/courses")).data,
@@ -448,28 +493,12 @@ function CoursesSection() {
   } = useForm<CourseForm>({ resolver: zodResolver(courseSchema) });
 
   const createMutation = useMutation({
-    mutationFn: async (values: CourseForm) =>
-      (
-        await apiClient.post("/courses", {
-          section_id: values.section_id,
-          subject_id: values.subject_id,
-          academic_year_id: values.academic_year_id,
-        })
-      ).data,
+    mutationFn: async (values: CourseForm) => (await apiClient.post("/courses", values)).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["courses"] });
       reset();
     },
   });
-
-  const yearLabel = (id: string) => years.data?.find((y) => y.id === id)?.label ?? id.slice(0, 8);
-  const subjectName = (id: string) => subjects.data?.find((s) => s.id === id)?.name ?? id.slice(0, 8);
-  const sectionLabel = (id: string) => {
-    const section = sections.data?.find((s) => s.id === id);
-    if (!section) return id.slice(0, 8);
-    const grade = grades.data?.find((g) => g.id === section.grade_level_id)?.name ?? "";
-    return `${grade} "${section.name}"`.trim();
-  };
 
   const canCreate =
     (years.data?.length ?? 0) > 0 && (sections.data?.length ?? 0) > 0 && (subjects.data?.length ?? 0) > 0;
@@ -483,7 +512,7 @@ function CoursesSection() {
       )}
       <form
         onSubmit={handleSubmit((values) => createMutation.mutate(values))}
-        className="grid gap-3 sm:grid-cols-4"
+        className="grid gap-3 sm:grid-cols-3"
         noValidate
       >
         <Field label="Año académico" error={errors.academic_year_id?.message}>
@@ -516,6 +545,12 @@ function CoursesSection() {
             ))}
           </select>
         </Field>
+        <Field label="Fecha de inicio" error={errors.starts_on?.message}>
+          <input type="date" className={inputClass} {...register("starts_on")} />
+        </Field>
+        <Field label="Fecha de fin" error={errors.ends_on?.message}>
+          <input type="date" className={inputClass} {...register("ends_on")} />
+        </Field>
         <div className="flex items-end">
           <button
             type="submit"
@@ -536,17 +571,197 @@ function CoursesSection() {
       {data && data.length > 0 && (
         <ul className="mt-3 space-y-2">
           {data.map((course) => (
-            <li
+            <CourseRow
               key={course.id}
-              className="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700"
-            >
-              {subjectName(course.subject_id)} · {sectionLabel(course.section_id)} ·{" "}
-              {yearLabel(course.academic_year_id)}
-            </li>
+              course={course}
+              teachers={teachers.data ?? []}
+              subjectName={subjectName}
+              sectionLabel={sectionLabel}
+              yearLabel={yearLabel}
+              teacherName={teacherName}
+            />
           ))}
         </ul>
       )}
     </Card>
+  );
+}
+
+function CourseRow({
+  course,
+  teachers,
+  subjectName,
+  sectionLabel,
+  yearLabel,
+  teacherName,
+}: {
+  course: Course;
+  teachers: Teacher[];
+  subjectName: (id: string) => string;
+  sectionLabel: (id: string) => string;
+  yearLabel: (id: string) => string;
+  teacherName: (id: string) => string;
+}) {
+  const queryClient = useQueryClient();
+  const [mode, setMode] = useState<"view" | "edit" | "confirm-delete">("view");
+  const [teacherToAssign, setTeacherToAssign] = useState("");
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<CourseEditForm>({
+    resolver: zodResolver(courseEditSchema),
+    defaultValues: { starts_on: course.starts_on, ends_on: course.ends_on },
+  });
+
+  const invalidateCourses = () => queryClient.invalidateQueries({ queryKey: ["courses"] });
+
+  const updateMutation = useMutation({
+    mutationFn: async (values: CourseEditForm) =>
+      (await apiClient.patch(`/courses/${course.id}`, values)).data,
+    onSuccess: () => {
+      invalidateCourses();
+      setMode("view");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => apiClient.delete(`/courses/${course.id}`),
+    onSuccess: () => invalidateCourses(),
+  });
+
+  const assignTeacherMutation = useMutation({
+    mutationFn: async (teacherId: string) =>
+      (await apiClient.post(`/courses/${course.id}/teachers`, { teacher_user_id: teacherId })).data,
+    onSuccess: () => {
+      invalidateCourses();
+      setTeacherToAssign("");
+    },
+  });
+
+  const availableTeachers = teachers.filter((t) => !course.teacher_user_ids.includes(t.id));
+
+  return (
+    <li className="rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p>
+            {subjectName(course.subject_id)} · {sectionLabel(course.section_id)} ·{" "}
+            {yearLabel(course.academic_year_id)}
+          </p>
+          <p className="text-xs text-slate-500">
+            {course.starts_on} → {course.ends_on}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setMode(mode === "edit" ? "view" : "edit")}
+            className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+          >
+            {mode === "edit" ? "Cancelar" : "Editar"}
+          </button>
+          {mode === "confirm-delete" ? (
+            <>
+              <button
+                type="button"
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+                className="focus-ring rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                Confirmar
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("view")}
+                className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setMode("confirm-delete")}
+              className="focus-ring rounded-md border border-red-300 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50"
+            >
+              Eliminar
+            </button>
+          )}
+        </div>
+      </div>
+      {deleteMutation.isError && <ErrorState error={deleteMutation.error} />}
+
+      {mode === "edit" && (
+        <form
+          onSubmit={handleSubmit((values) => updateMutation.mutate(values))}
+          className="mt-2 grid gap-2 border-t border-slate-100 pt-2 sm:grid-cols-3"
+          noValidate
+        >
+          <Field label="Fecha de inicio" error={errors.starts_on?.message}>
+            <input type="date" className={inputClass} {...register("starts_on")} />
+          </Field>
+          <Field label="Fecha de fin" error={errors.ends_on?.message}>
+            <input type="date" className={inputClass} {...register("ends_on")} />
+          </Field>
+          <div className="flex items-end">
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="focus-ring w-full rounded-md bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-60"
+            >
+              Guardar
+            </button>
+          </div>
+          {updateMutation.isError && (
+            <div className="sm:col-span-3">
+              <ErrorState error={updateMutation.error} />
+            </div>
+          )}
+        </form>
+      )}
+
+      <div className="mt-2 border-t border-slate-100 pt-2">
+        <p className="text-xs font-medium text-slate-600">Docente encargado</p>
+        {course.teacher_user_ids.length === 0 ? (
+          <p className="text-xs text-amber-700">
+            Sin docente asignado — no se puede matricular alumnos en este curso todavía.
+          </p>
+        ) : (
+          <ul className="flex flex-wrap gap-1.5">
+            {course.teacher_user_ids.map((id) => (
+              <li key={id} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                {teacherName(id)}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <select
+            className={inputClass + " max-w-xs"}
+            value={teacherToAssign}
+            onChange={(e) => setTeacherToAssign(e.target.value)}
+          >
+            <option value="">Selecciona un docente…</option>
+            {availableTeachers.map((teacher) => (
+              <option key={teacher.id} value={teacher.id}>
+                {teacher.display_name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={!teacherToAssign || assignTeacherMutation.isPending}
+            onClick={() => assignTeacherMutation.mutate(teacherToAssign)}
+            className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100 disabled:opacity-60"
+          >
+            Asignar
+          </button>
+        </div>
+        {assignTeacherMutation.isError && <ErrorState error={assignTeacherMutation.error} />}
+      </div>
+    </li>
   );
 }
 
@@ -699,19 +914,31 @@ function EnrollmentsSection() {
               <p className="text-xs text-slate-500">Esa sección todavía no tiene cursos.</p>
             ) : (
               <div className="flex flex-wrap gap-3">
-                {coursesInSection.map((course) => (
-                  <label
-                    key={course.id}
-                    className="flex items-center gap-1.5 text-xs text-slate-700"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedCourseIds.includes(course.id)}
-                      onChange={() => toggleCourse(course.id)}
-                    />
-                    Curso {course.id.slice(0, 8)}
-                  </label>
-                ))}
+                {coursesInSection.map((course) => {
+                  const hasTeacher = course.teacher_user_ids.length > 0;
+                  return (
+                    <label
+                      key={course.id}
+                      className={`flex items-center gap-1.5 text-xs ${
+                        hasTeacher ? "text-slate-700" : "cursor-not-allowed text-slate-400"
+                      }`}
+                      title={
+                        hasTeacher
+                          ? undefined
+                          : "Asigna un docente encargado a este curso antes de matricular alumnos."
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={!hasTeacher}
+                        checked={selectedCourseIds.includes(course.id)}
+                        onChange={() => toggleCourse(course.id)}
+                      />
+                      Curso {course.id.slice(0, 8)}
+                      {!hasTeacher && " (sin docente)"}
+                    </label>
+                  );
+                })}
               </div>
             )}
           </div>

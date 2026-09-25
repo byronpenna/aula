@@ -17,6 +17,7 @@ from app.modules.academics import models as academics_models  # noqa: E402,F401
 from app.modules.files import models as files_models  # noqa: E402,F401
 from app.modules.identity import models as identity_models  # noqa: E402,F401
 from app.modules.learning import models as learning_models  # noqa: E402,F401
+from app.modules.public_site import models as public_site_models  # noqa: E402,F401
 
 config = context.config
 

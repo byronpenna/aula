@@ -80,6 +80,10 @@ class Course(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
     )
+    starts_on: Mapped[date] = mapped_column(nullable=False)
+    ends_on: Mapped[date] = mapped_column(nullable=False)
+    # "active" | "deleted" (baja lógica, sección 6: nunca se hace DELETE real de una
+    # fila con tareas/entregas/matrículas dependientes; ver academics/service.py).
     status: Mapped[str] = mapped_column(nullable=False, default="active")
 
 

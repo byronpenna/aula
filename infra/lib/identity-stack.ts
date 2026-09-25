@@ -9,6 +9,12 @@ export interface IdentityStackProps extends cdk.StackProps {
    * (Amplify); actualizar y redeployar cuando el frontend implemente /callback. */
   callbackUrls?: string[];
   logoutUrls?: string[];
+  /** Callback/logout URLs del área administrativa de apps/public_web (mismo User
+   * Pool y scope que el SPA de aula virtual; cliente propio para poder rotar o
+   * deshabilitar uno sin afectar al otro). Placeholder hasta desplegar public_web
+   * en Amplify — ver docs/adr/0002-frontend-amplify.md. */
+  publicWebCallbackUrls?: string[];
+  publicWebLogoutUrls?: string[];
 }
 
 /**
@@ -21,6 +27,7 @@ export interface IdentityStackProps extends cdk.StackProps {
 export class IdentityStack extends cdk.Stack {
   public readonly userPool: cognito.UserPool;
   public readonly userPoolClient: cognito.UserPoolClient;
+  public readonly publicWebAdminClient: cognito.UserPoolClient;
   public readonly userPoolDomain: cognito.UserPoolDomain;
 
   constructor(scope: Construct, id: string, props: IdentityStackProps) {
@@ -71,6 +78,21 @@ export class IdentityStack extends cdk.Stack {
       preventUserExistenceErrors: true,
     });
 
+    // Cliente propio del área admin de public_web (sección 7 de
+    // apps/public_web/AGENTS admin): mismo pool/scope que SpaClient, callback/logout
+    // distintos porque es otro origen (dominio de public_web, no el de aula.web).
+    this.publicWebAdminClient = this.userPool.addClient("PublicWebAdminClient", {
+      generateSecret: false,
+      authFlows: { userSrp: true },
+      oAuth: {
+        flows: { authorizationCodeGrant: true },
+        scopes: [cognito.OAuthScope.resourceServer(resourceServer, accessScope)],
+        callbackUrls: props.publicWebCallbackUrls ?? ["https://public-web.example.local/admin/callback"],
+        logoutUrls: props.publicWebLogoutUrls ?? ["https://public-web.example.local/admin"],
+      },
+      preventUserExistenceErrors: true,
+    });
+
     // Prefijo fijo (incluye el account id) en vez de derivarlo de `this.account`:
     // los stacks son "environment-agnostic" por diseño (bin/aula.ts) y `cdk synth`
     // en CI corre sin AULA_CDK_ENV=1, donde `this.account` es un token sin resolver
@@ -81,6 +103,9 @@ export class IdentityStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, "UserPoolId", { value: this.userPool.userPoolId });
     new cdk.CfnOutput(this, "UserPoolClientId", { value: this.userPoolClient.userPoolClientId });
+    new cdk.CfnOutput(this, "PublicWebAdminClientId", {
+      value: this.publicWebAdminClient.userPoolClientId,
+    });
     new cdk.CfnOutput(this, "HostedUiDomainUrl", { value: this.userPoolDomain.baseUrl() });
   }
 }

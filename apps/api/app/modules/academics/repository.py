@@ -66,12 +66,14 @@ def get_subject(db: Session, school_id: uuid.UUID, subject_id: uuid.UUID) -> Sub
 
 
 def get_course(db: Session, school_id: uuid.UUID, course_id: uuid.UUID) -> Course | None:
-    stmt = select(Course).where(Course.id == course_id, Course.school_id == school_id)
+    stmt = select(Course).where(
+        Course.id == course_id, Course.school_id == school_id, Course.status != "deleted"
+    )
     return db.execute(stmt).scalar_one_or_none()
 
 
 def list_all_courses(db: Session, school_id: uuid.UUID) -> list[Course]:
-    stmt = select(Course).where(Course.school_id == school_id)
+    stmt = select(Course).where(Course.school_id == school_id, Course.status != "deleted")
     return list(db.execute(stmt).scalars().all())
 
 
@@ -83,6 +85,7 @@ def list_courses_taught_by(
         .join(CourseTeacher, CourseTeacher.course_id == Course.id)
         .where(
             Course.school_id == school_id,
+            Course.status != "deleted",
             CourseTeacher.teacher_user_id == teacher_user_id,
             CourseTeacher.status == "active",
         )
@@ -100,6 +103,7 @@ def list_courses_for_students(
         .join(CourseEnrollment, CourseEnrollment.course_id == Course.id)
         .where(
             Course.school_id == school_id,
+            Course.status != "deleted",
             CourseEnrollment.student_id.in_(student_ids),
             CourseEnrollment.status == "active",
         )
@@ -113,6 +117,30 @@ def is_teacher_of_course(db: Session, course_id: uuid.UUID, teacher_user_id: uui
         CourseTeacher.course_id == course_id,
         CourseTeacher.teacher_user_id == teacher_user_id,
         CourseTeacher.status == "active",
+    )
+    return db.execute(stmt).scalar_one_or_none() is not None
+
+
+def get_course_teacher(
+    db: Session, course_id: uuid.UUID, teacher_user_id: uuid.UUID
+) -> CourseTeacher | None:
+    stmt = select(CourseTeacher).where(
+        CourseTeacher.course_id == course_id,
+        CourseTeacher.teacher_user_id == teacher_user_id,
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def list_active_teacher_ids_for_course(db: Session, course_id: uuid.UUID) -> list[uuid.UUID]:
+    stmt = select(CourseTeacher.teacher_user_id).where(
+        CourseTeacher.course_id == course_id, CourseTeacher.status == "active"
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def course_has_active_teacher(db: Session, course_id: uuid.UUID) -> bool:
+    stmt = select(CourseTeacher).where(
+        CourseTeacher.course_id == course_id, CourseTeacher.status == "active"
     )
     return db.execute(stmt).scalar_one_or_none() is not None
 

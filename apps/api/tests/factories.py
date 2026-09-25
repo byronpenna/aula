@@ -114,6 +114,8 @@ def create_academic_structure(db: Session, school: School) -> dict:
         section_id=section.id,
         subject_id=subject.id,
         academic_year_id=year.id,
+        starts_on=year.starts_on,
+        ends_on=year.ends_on,
     )
     db.add(course)
     db.flush()

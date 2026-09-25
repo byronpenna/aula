@@ -27,6 +27,7 @@ from app.modules.academics.schemas import (
     CourseOut,
     CourseTeacherCreate,
     CourseTeacherOut,
+    CourseUpdate,
     EnrollmentCreate,
     EnrollmentOut,
     GradeLevelCreate,
@@ -39,6 +40,12 @@ from app.modules.academics.schemas import (
 from app.modules.identity.models import User
 
 router = APIRouter(tags=["academics"])
+
+
+def _course_out(db: Session, course: Course) -> CourseOut:
+    out = CourseOut.model_validate(course)
+    out.teacher_user_ids = academics_repo.list_active_teacher_ids_for_course(db, course.id)
+    return out
 
 
 @router.post("/academic-years", response_model=AcademicYearOut)
@@ -118,12 +125,45 @@ def list_sections(
 @router.post("/courses", response_model=CourseOut)
 def create_course(
     payload: CourseCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
-) -> Course:
-    return academics_service.create_course(
-        db, current, payload.section_id, payload.subject_id, payload.academic_year_id
+) -> CourseOut:
+    course = academics_service.create_course(
+        db,
+        current,
+        payload.section_id,
+        payload.subject_id,
+        payload.academic_year_id,
+        payload.starts_on,
+        payload.ends_on,
+        request.state.request_id,
     )
+    return _course_out(db, course)
+
+
+@router.patch("/courses/{course_id}", response_model=CourseOut)
+def update_course(
+    course_id: uuid.UUID,
+    payload: CourseUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> CourseOut:
+    course = academics_service.update_course(
+        db, current, course_id, payload, request.state.request_id
+    )
+    return _course_out(db, course)
+
+
+@router.delete("/courses/{course_id}", status_code=204, response_model=None)
+def delete_course(
+    course_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> None:
+    academics_service.delete_course(db, current, course_id, request.state.request_id)
 
 
 @router.get("/courses", response_model=list[CourseOut])
@@ -131,8 +171,9 @@ def list_courses(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     current: CurrentMembership = Depends(require_permission(COURSE_READ)),
-) -> list[Course]:
-    return academics_service.list_visible_courses(db, current, user.id)
+) -> list[CourseOut]:
+    courses = academics_service.list_visible_courses(db, current, user.id)
+    return [_course_out(db, course) for course in courses]
 
 
 @router.get("/courses/{course_id}", response_model=CourseOut)
@@ -141,12 +182,12 @@ def get_course(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     current: CurrentMembership = Depends(require_permission(COURSE_READ)),
-) -> Course:
+) -> CourseOut:
     course = academics_repo.get_course(db, current.school_id, course_id)
     if course is None:
         raise NotFoundError("El curso indicado no existe en este colegio.")
     academics_service.require_course_access(db, current, user.id, course)
-    return course
+    return _course_out(db, course)
 
 
 @router.post("/courses/{course_id}/teachers", response_model=CourseTeacherOut)

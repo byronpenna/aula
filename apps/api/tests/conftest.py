@@ -16,7 +16,7 @@ from collections.abc import Generator
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
 os.environ.setdefault("APP_ENV", "local")
@@ -49,8 +49,12 @@ from app.modules.academics import models as academics_models  # noqa: E402,F401
 from app.modules.files import models as files_models  # noqa: E402,F401
 from app.modules.identity import models as identity_models  # noqa: E402,F401
 from app.modules.learning import models as learning_models  # noqa: E402,F401
+from app.modules.public_site import models as public_site_models  # noqa: E402,F401
 
 engine = create_engine(TEST_DATABASE_URL)
+with engine.begin() as _conn:
+    # Los schemas no default (`content`) no los crea `create_all`; sección 7.
+    _conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {public_site_models.CONTENT_SCHEMA}"))
 Base.metadata.drop_all(engine)
 Base.metadata.create_all(engine)
 

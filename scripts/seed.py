@@ -169,7 +169,7 @@ def main() -> None:
             section_id=section.id,
             subject_id=subject.id,
             academic_year_id=year.id,
-            defaults={"status": "active"},
+            defaults={"starts_on": year.starts_on, "ends_on": year.ends_on, "status": "active"},
         )
         get_or_create(
             db,

@@ -24,6 +24,11 @@ BILLING_MANAGE = "billing:manage"
 ENROLLMENT_MANAGE = "enrollment:manage"
 GUARDIAN_LINK_MANAGE = "guardian_link:manage"
 
+# Área administrativa del sitio público (apps/public_web/AGENTS admin): un solo
+# permiso para todo el módulo `public_site` (noticias hoy, más contenido después),
+# igual que el resto del catálogo no separa "crear" de "editar" por recurso.
+PUBLIC_SITE_MANAGE = "public_site:manage"
+
 ALL_PERMISSIONS: dict[str, str] = {
     USERS_MANAGE: "Invitar, desactivar y administrar usuarios del colegio",
     ACADEMICS_MANAGE: "Administrar años, secciones, materias y cursos",
@@ -37,11 +42,13 @@ ALL_PERMISSIONS: dict[str, str] = {
     BILLING_MANAGE: "Administrar cargos y pagos (módulo opcional)",
     ENROLLMENT_MANAGE: "Matricular alumnos en secciones y cursos",
     GUARDIAN_LINK_MANAGE: "Administrar vínculos entre tutores y alumnos",
+    PUBLIC_SITE_MANAGE: "Administrar el contenido del sitio público (noticias y otros)",
 }
 
 # Rol -> permisos por defecto, usado solo por el seed para poblar role_permissions.
 DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
     "school_admin": list(ALL_PERMISSIONS.keys()),
+    "public_site_editor": [PUBLIC_SITE_MANAGE],
     "coordinator": [
         ACADEMICS_MANAGE,
         COURSE_READ,
