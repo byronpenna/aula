@@ -21,6 +21,10 @@ infra/dist/
 apps/web/.env
 !apps/web/.env.example
 
+# Overrides locales de Docker Compose (p. ej. remapear puertos por conflicto con
+# otro proyecto en la misma máquina); no aplica a otros entornos.
+compose.override.yaml
+
 # Editores / SO
 .DS_Store
 *.log

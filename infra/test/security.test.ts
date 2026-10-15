@@ -37,6 +37,23 @@ describe("infra security assertions", () => {
   });
   const frontend = new FrontendStack(app, "TestFrontend", { environmentName: "dev" });
 
+  // Stack aparte con sesFromEmail definido, para probar esa rama sin afectar
+  // `api` (usado por el resto de los tests de esta suite, que esperan el estado
+  // por defecto sin el permiso SES).
+  const apiWithSes = new ApiStack(app, "TestApiWithSes", {
+    vpc: network.vpc,
+    appSecurityGroup: network.appSecurityGroup,
+    migrationRunnerSecurityGroup: network.migrationRunnerSecurityGroup,
+    dbProxyEndpoint: data.proxyEndpoint,
+    dbSecret: data.databaseSecret,
+    userPool: identity.userPool,
+    userPoolClient: identity.userPoolClient,
+    filesBucketName: "aula-files-test-ses",
+    queueUrl: asyncStack.notificationsQueue.queueUrl,
+    environmentName: "dev",
+    sesFromEmail: "no-reply@example.com",
+  });
+
   test("el bucket de archivos bloquea acceso público total", () => {
     const template = Template.fromStack(api);
     template.hasResourceProperties("AWS::S3::Bucket", {
@@ -95,6 +112,35 @@ describe("infra security assertions", () => {
           : [statement.Resource];
         expect(actions).not.toContain("*");
         expect(resources).not.toContain("*");
+      }
+    }
+  });
+
+  test("sin sesFromEmail, el Lambda de la API no recibe ningún permiso ses:*", () => {
+    const template = Template.fromStack(api);
+    const policies = template.findResources("AWS::IAM::Policy");
+    const allActions = Object.values(policies).flatMap(
+      (policy: any) => policy.Properties.PolicyDocument.Statement as any[],
+    ).flatMap((statement: any) => (Array.isArray(statement.Action) ? statement.Action : [statement.Action]));
+    expect(allActions.some((action: string) => action?.startsWith("ses:"))).toBe(false);
+  });
+
+  test("con sesFromEmail, el permiso ses:SendEmail queda acotado a esa identidad, nunca a '*'", () => {
+    const template = Template.fromStack(apiWithSes);
+    const policies = template.findResources("AWS::IAM::Policy");
+    const sesStatements = Object.values(policies)
+      .flatMap((policy: any) => policy.Properties.PolicyDocument.Statement as any[])
+      .filter((statement: any) => {
+        const actions = Array.isArray(statement.Action) ? statement.Action : [statement.Action];
+        return actions.includes("ses:SendEmail");
+      });
+    expect(sesStatements.length).toBeGreaterThan(0);
+    for (const statement of sesStatements) {
+      const resources = Array.isArray(statement.Resource) ? statement.Resource : [statement.Resource];
+      expect(resources).not.toContain("*");
+      for (const resource of resources) {
+        const resolved = typeof resource === "string" ? resource : JSON.stringify(resource);
+        expect(resolved).toContain("identity/no-reply@example.com");
       }
     }
   });

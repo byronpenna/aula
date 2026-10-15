@@ -29,8 +29,16 @@ GUARDIAN_LINK_MANAGE = "guardian_link:manage"
 # igual que el resto del catálogo no separa "crear" de "editar" por recurso.
 PUBLIC_SITE_MANAGE = "public_site:manage"
 
+# Fase 3 (Usuarios y roles, sección 6): separados de USERS_MANAGE porque editar la
+# matriz de permisos de un rol es una acción distinta y más sensible que
+# invitar/desactivar usuarios; auditoría es de solo lectura.
+ROLES_MANAGE = "roles:manage"
+AUDIT_READ = "audit:read"
+
 ALL_PERMISSIONS: dict[str, str] = {
     USERS_MANAGE: "Invitar, desactivar y administrar usuarios del colegio",
+    ROLES_MANAGE: "Ver y editar roles y su matriz de permisos",
+    AUDIT_READ: "Consultar el registro de auditoría",
     ACADEMICS_MANAGE: "Administrar años, secciones, materias y cursos",
     COURSE_READ: "Consultar cursos y su contenido",
     ASSIGNMENT_MANAGE: "Crear, editar y publicar tareas",

@@ -93,3 +93,27 @@ Tras la Fase 0 (este documento), se ejecutó una Fase 1 ampliada que combina mar
 - Verificado en navegador real (Chrome): dashboard con KPIs correctos, las 6 pestañas de Academia, crear/editar/archivar/reactivar en cada catálogo, asignación de docente, y que un docente sin permiso ve "Acceso no autorizado" al entrar a `/admin` por URL directa (el backend ya lo bloqueaba; ahora la UI también lo comunica con claridad). `npm run typecheck/lint/build` limpios.
 
 **Explícitamente no incluido en esta entrega** (ver §6 y §7 más arriba): Usuarios, Roles y permisos, Auditoría (Fase 3); dividir Academia en rutas independientes por entidad con paginación de servidor; bloque "Actividad reciente" del dashboard (requiere un endpoint nuevo de lectura de `audit_events`); columnas de conteo (matriculados por curso/sección); verificación responsive real por debajo de 768px (las tablas se envolvieron en contenedores con scroll horizontal y el shell tiene un botón de menú móvil, pero no se pudo capturar una pantalla real <768px en esta sesión — la herramienta de redimensionar ventana del navegador no afectó el viewport real).
+
+## 9. Fase 3a — Usuarios y Roles (alcance de colegio completo)
+
+Construida a continuación de la Fase 1+, con dos decisiones confirmadas explícitamente por el propietario: (1) alcance institucional completo por ahora, el RBAC granular por año/grado/sección queda pendiente de una decisión institucional sin responder; (2) el alta de usuarios debe usar el **Cognito real ya desplegado**, no un mecanismo de credenciales local paralelo.
+
+**Backend**
+- Migración aditiva: `roles.is_system` (protege código/nombre de los 7 roles sembrados) y `roles.version` (concurrencia optimista al editar permisos).
+- Nuevos permisos `roles:manage` y `audit:read` (además del ya existente `users:manage`), todos exclusivos de `school_admin` por defecto — sin ampliar a `coordinator`, siguiendo la decisión conservadora ya documentada en §6.
+- `identity/cognito_admin.py` (nuevo): llama a `cognito-idp:AdminCreateUser` con la contraseña ya definida en el formulario como `TemporaryPassword` (`MessageAction=SUPPRESS`, no hay SES); toma el `sub` devuelto como `User.cognito_sub`. Solo se ejecuta fuera de `APP_ENV=local`; en local se sigue usando `LocalAuthCredential`, sin dos fuentes de verdad simultáneas.
+- Endpoints nuevos: `GET/POST /users`, `PATCH /users/{id}`, `POST /users/{id}/activate|deactivate`, `POST /users/{id}/role-assignments`, `DELETE /users/{id}/role-assignments/{role_code}`, `GET /roles`, `GET /roles/{code}`, `GET /roles/{code}/users`, `PUT /roles/{code}/permissions`, `GET /permissions`, `GET /audit-logs` (de solo lectura, nunca expone `changes`).
+- Protección real del "último administrador": desactivar una membresía o revocarle un rol que deje a `users:manage`/`roles:manage` sin ningún titular activo se rechaza con `409` — verificado en pytest y en el navegador.
+- 41/41 tests pasando (`pytest`), incluida la rama de Cognito simulada con `unittest.mock.patch("boto3.client")` (sin tocar AWS real); `ruff`/`mypy` limpios.
+
+**Infraestructura**
+- `infra/lib/api-stack.ts`: nuevo permiso IAM `cognito-idp:AdminCreateUser` acotado al ARN del User Pool (ningún wildcard), y nueva variable de entorno `COGNITO_USER_POOL_ID` para el Lambda de la API.
+- Verificado con `cdk synth` (sin credenciales reales) y `npx jest` (6/6, incluida la prueba que rechaza políticas IAM con comodín total) — **no se ejecutó `cdk deploy`**; el propietario debe revisar y desplegar `Aula-dev-Api` (y posiblemente `Aula-dev-Identity` si CDK detecta cambios ahí) con su perfil AWS antes de que el alta de usuarios funcione contra el ambiente real.
+
+**Frontend**
+- `/admin/users`: buscador, filtros por rol/estado, tabla con roles editables inline (agregar/quitar), activar/desactivar, alta de usuario con contraseña generada aleatoriamente y editable en el propio formulario (aviso explícito de que no se envía por correo).
+- `/admin/roles`: matriz de permisos real agrupada por módulo, guardado con control de versión (409 si otro administrador editó primero), pestaña de usuarios asignados por rol.
+- Sidebar: grupo "Usuarios" (Usuarios, Roles y permisos) ahora visible — ya no es un placeholder, las pantallas existen de verdad; se oculta solo si el permiso no está en `/me/permissions`.
+- Verificado en navegador real: usuario nuevo creado con contraseña generada, login exitoso con esa cuenta confirmado por HTTP directo (`curl`, ya que el clic del botón de login se volvió intermitente en la herramienta de automatización hacia el final de esta sesión larga — no se relaciona con el código, el mismo formulario ya se había usado con éxito muchas veces antes en la sesión); edición de permisos de un rol con incremento de versión confirmado visualmente (v1→v2); bloqueo del último administrador confirmado tanto por `409` de red como por el mensaje de error mostrado en pantalla.
+
+**Explícitamente fuera de esta entrega**: RBAC con alcance granular; pantalla dedicada de Auditoría (el endpoint de lectura ya existe); reenvío/reset de contraseña; MFA; invitaciones reales por correo (sigue sin SES configurado).

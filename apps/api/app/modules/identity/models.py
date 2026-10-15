@@ -61,6 +61,13 @@ class Role(UUIDPKMixin, TimestampMixin, Base):
 
     code: Mapped[str] = mapped_column(unique=True, nullable=False)
     name: Mapped[str] = mapped_column(nullable=False)
+    # Roles sembrados por el catálogo (`core/permissions.py`): su código/nombre no se
+    # puede editar/archivar desde la UI porque toda la lógica de autorización del
+    # backend compara contra estos `code` literales (sección 6); sus permisos sí.
+    is_system: Mapped[bool] = mapped_column(nullable=False, default=False)
+    # Control de concurrencia optimista al editar la matriz de permisos (sección 6 de
+    # 03-USUARIOS-ROLES-Y-SEGURIDAD.md): se incrementa en cada `update_role_permissions`.
+    version: Mapped[int] = mapped_column(nullable=False, default=1)
 
 
 class Permission(UUIDPKMixin, TimestampMixin, Base):

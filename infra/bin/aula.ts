@@ -76,6 +76,11 @@ const api = new ApiStack(app, `${prefix}-Api`, {
   // Dominio real del frontend en Amplify Hosting (docs/adr/0002-frontend-amplify.md).
   // Actualizar aquí y redeployar si se agrega un dominio propio más adelante.
   allowedOrigins: ["https://main.dy880wnmeoiy1.amplifyapp.com"],
+  // sesFromEmail: sin definir a propósito — todavía no hay ninguna identidad
+  // (dominio o correo) verificada en SES en esta cuenta. Definir aquí (p. ej.
+  // "no-reply@tudominio.com") y verificarla en SES antes de desplegar; hasta
+  // entonces, identity/mailer.py queda inactivo y create_user sigue mostrando
+  // la contraseña en el formulario (ver docs/STATUS_FASE3.md).
 });
 
 const frontend = new FrontendStack(app, `${prefix}-Frontend`, {

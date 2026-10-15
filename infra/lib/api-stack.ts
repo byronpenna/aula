@@ -5,6 +5,7 @@ import { HttpJwtAuthorizer } from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
@@ -64,6 +65,14 @@ export interface ApiStackProps extends cdk.StackProps {
    * el dominio real del frontend (Amplify); actualizar y redeployar cuando se
    * tenga (sección 5: "CORS limitado a orígenes configurados"). */
   allowedOrigins?: string[];
+  /** Remitente de invitaciones por correo (identity/mailer.py). Sin definir (el
+   * caso hoy: ningún entorno tiene una identidad verificada en SES todavía), no
+   * se otorga ningún permiso `ses:*` y el Lambda arranca con MAIL_FROM_ADDRESS
+   * vacío — create_user vuelve a mostrar la contraseña en el formulario en vez
+   * de enviarla por correo. Definir aquí solo después de verificar esta misma
+   * dirección (o su dominio) en SES; de lo contrario el envío fallará en
+   * runtime con un error de SES, no en el deploy. */
+  sesFromEmail?: string;
 }
 
 /**
@@ -123,15 +132,50 @@ export class ApiStack extends cdk.Stack {
         DB_SECRET_ARN: props.dbSecret.secretArn,
         COGNITO_ISSUER: `https://cognito-idp.${this.region}.amazonaws.com/${props.userPool.userPoolId}`,
         COGNITO_CLIENT_ID: props.userPoolClient.userPoolClientId,
+        // Distinto del issuer (una URL): lo piden las APIs de administración
+        // (AdminCreateUser, sección 6/Fase 3 "altas administradas") que la
+        // verificación de tokens no usa.
+        COGNITO_USER_POOL_ID: props.userPool.userPoolId,
         FILES_BUCKET: filesBucket.bucketName,
         QUEUE_URL: props.queueUrl,
         LOCAL_AUTH_ENABLED: "false",
         ALLOWED_ORIGINS: JSON.stringify(allowedOrigins),
+        // Vacío mientras no haya una identidad verificada en SES (ver
+        // ApiStackProps.sesFromEmail); identity/mailer.py lee esto como "correo
+        // de invitaciones deshabilitado" y create_user no intenta enviar nada.
+        MAIL_FROM_ADDRESS: props.sesFromEmail ?? "",
+        APP_BASE_URL: allowedOrigins[0],
       },
     });
 
     props.dbSecret.grantRead(this.apiFunction);
     filesBucket.grantReadWrite(this.apiFunction);
+    // Alta administrada de usuarios (Fase 3): el único permiso Admin* que necesita
+    // el backend hoy es crear la cuenta con una contraseña temporal ya definida en
+    // el propio formulario (AdminCreateUser la acepta directamente, sin necesitar
+    // AdminSetUserPassword aparte); activar/desactivar solo cambia la membresía
+    // local, no toca Cognito (ver identity/service.py::set_membership_status).
+    this.apiFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cognito-idp:AdminCreateUser"],
+        resources: [props.userPool.userPoolArn],
+      }),
+    );
+
+    // Invitación por correo real (identity/mailer.py): solo se otorga si ya se
+    // conoce el remitente, para no pedir un permiso IAM de una identidad que
+    // SES todavía no tiene verificada (el security.test.ts de este repo también
+    // rechaza cualquier política con Resource "*"). Acotado al ARN de esa
+    // identidad exacta — ningún otro `ses:*` (no hace falta enviar como otra
+    // dirección ni leer plantillas).
+    if (props.sesFromEmail) {
+      this.apiFunction.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ["ses:SendEmail", "ses:SendRawEmail"],
+          resources: [`arn:aws:ses:${this.region}:${this.account}:identity/${props.sesFromEmail}`],
+        }),
+      );
+    }
 
     // Runner de migraciones (sección 18): sustituto serverless simple del runner
     // de CodeBuild en VPC mientras esa pieza no se implementa. Solo invocable

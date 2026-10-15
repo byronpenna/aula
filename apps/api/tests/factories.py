@@ -43,7 +43,7 @@ def ensure_role_catalog(db: Session) -> None:
             db.add(Permission(code=code, description=description))
     for role_code in DEFAULT_ROLE_PERMISSIONS:
         if not db.query(Role).filter_by(code=role_code).one_or_none():
-            db.add(Role(code=role_code, name=role_code))
+            db.add(Role(code=role_code, name=role_code, is_system=True))
     db.flush()
 
     for role_code, perm_codes in DEFAULT_ROLE_PERMISSIONS.items():

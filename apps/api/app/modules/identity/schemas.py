@@ -1,15 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict
-
-
-class RoleOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    code: str
-    name: str
 
 
 class MembershipOut(BaseModel):
@@ -60,19 +54,85 @@ class LocalLoginResponse(BaseModel):
     expires_in: int
 
 
-class UserInvitationCreate(BaseModel):
-    school_id: uuid.UUID
-    display_name: str
-    email: str | None = None
-    role_codes: list[str]
-
-
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     display_name: str
     email: str | None
     status: str
+
+
+class UserCreate(BaseModel):
+    display_name: str
+    email: str | None = None
+    username: str
+    password: str
+    role_code: str
+
+
+class UserUpdate(BaseModel):
+    display_name: str | None = None
+    email: str | None = None
+
+
+class UserListItemOut(BaseModel):
+    id: uuid.UUID
+    display_name: str
+    email: str | None
+    username: str | None
+    membership_status: str
+    role_codes: list[str]
+
+
+class UserCreateOut(UserListItemOut):
+    """Respuesta de `POST /users`: nunca lleva `temporary_password` a la vez que
+    `invitation_sent=True` (la contraseña ya viajó por correo; no se duplica en la
+    respuesta HTTP, que puede quedar en logs de acceso/proxy)."""
+
+    invitation_sent: bool
+    temporary_password: str | None
+
+
+class PermissionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    code: str
+    description: str
+
+
+class RoleOut(BaseModel):
+    code: str
+    name: str
+    is_system: bool
+    version: int
+    permission_codes: list[str]
+    assigned_user_count: int
+
+
+class RoleUserOut(BaseModel):
+    id: uuid.UUID
+    display_name: str
+    email: str | None
+    membership_status: str
+
+
+class RoleAssignmentCreate(BaseModel):
+    role_code: str
+
+
+class RolePermissionsUpdate(BaseModel):
+    expected_version: int
+    permission_codes: list[str]
+
+
+class AuditEventOut(BaseModel):
+    id: uuid.UUID
+    actor_id: uuid.UUID | None
+    actor_display_name: str | None
+    action: str
+    target_type: str
+    target_id: str
+    occurred_at: datetime
+    request_id: str | None
 
 
 class GuardianLinkCreate(BaseModel):

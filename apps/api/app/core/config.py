@@ -37,10 +37,23 @@ class Settings(BaseSettings):
     school_timezone: str = "America/El_Salvador"
     api_scope: str = "school-api/access"
 
-    # Cognito (fase cloud; sin User Pool real todavía, valores placeholder)
+    # Cognito (fase cloud). `cognito_user_pool_id` es distinto del *issuer* (una URL):
+    # lo piden las APIs de administración (`AdminCreateUser`, sección 6/Fase 3) que
+    # `cognito_issuer`/JWKS no cubren, ya que esas solo validan tokens.
     cognito_issuer: str | None = None
     cognito_client_id: str | None = None
+    cognito_user_pool_id: str | None = None
     cognito_jwks_cache_seconds: int = 3600
+
+    # Invitaciones por correo (sección 6, "próximos pasos" de docs/STATUS_FASE3.md):
+    # sin `mail_from_address` configurado (el caso hoy en local y en cloud mientras
+    # no se verifique una identidad en SES) `identity/mailer.py` queda inactivo y
+    # `create_user` vuelve al comportamiento anterior — la contraseña se muestra en
+    # el formulario y el administrador la comparte él mismo. `app_base_url` es el
+    # link de login que se incluye en el cuerpo del correo.
+    mail_from_address: str | None = None
+    mail_from_name: str = "Aula Virtual"
+    app_base_url: str = "http://localhost:5173"
 
     # Auth local (solo dev): adaptador de tokens firmados propios, JAMÁS en prod.
     local_auth_enabled: bool = True

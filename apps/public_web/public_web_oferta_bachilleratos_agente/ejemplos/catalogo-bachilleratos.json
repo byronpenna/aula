@@ -1,0 +1,202 @@
+{
+  "aviso": "Datos editoriales ilustrativos; validar con la dirección del colegio antes de publicar.",
+  "programas": [
+    {
+      "id": "hosteleria-y-turismo",
+      "slug": "hosteleria-y-turismo",
+      "titulo": "Hostelería y Turismo",
+      "area": "turismo-y-servicio",
+      "etiquetaArea": "Turismo y servicio",
+      "gancho": "Convierte la hospitalidad y el descubrimiento en experiencias memorables",
+      "resumen": "Explora el mundo de la atención al visitante, la organización de experiencias y el patrimonio turístico. Desarrolla habilidades de comunicación, servicio, planificación y trabajo en equipo.",
+      "imagen": null,
+      "intereses": [
+        "Atención al público",
+        "Viajes y cultura",
+        "Organización de eventos"
+      ],
+      "areasExplorar": [
+        "Hospitalidad y atención",
+        "Patrimonio local",
+        "Comunicación con visitantes",
+        "Organización de actividades",
+        "Sostenibilidad turística",
+        "Herramientas digitales del sector"
+      ],
+      "ejemplosProyectos": [
+        "Diseñar una ruta cultural local",
+        "Simular la gestión de una actividad escolar",
+        "Preparar una guía digital de destinos"
+      ],
+      "continuidad": [
+        "Turismo",
+        "Hotelería",
+        "Administración",
+        "Gestión de servicios"
+      ],
+      "seo": {
+        "title": "Hostelería y Turismo | Oferta académica | Colegio Coronel Francisco Linares",
+        "description": "Conoce nuestra propuesta de bachillerato en Hostelería y Turismo. Explora áreas de interés, proyectos ilustrativos y cómo solicitar información."
+      },
+      "oficial": null,
+      "estadoContenido": "BORRADOR_PENDIENTE_APROBACION"
+    },
+    {
+      "id": "idiomas",
+      "slug": "idiomas",
+      "titulo": "Idiomas",
+      "area": "lenguas-y-cultura",
+      "etiquetaArea": "Lenguas y cultura",
+      "gancho": "Abre nuevas conversaciones y conecta con otras culturas",
+      "resumen": "Fortalece tu expresión oral y escrita, la escucha y la comunicación intercultural mientras exploras nuevas formas de aprender y utilizar otras lenguas.",
+      "imagen": null,
+      "intereses": [
+        "Comunicación",
+        "Culturas del mundo",
+        "Lectura y conversación"
+      ],
+      "areasExplorar": [
+        "Expresión oral",
+        "Comprensión auditiva",
+        "Escritura",
+        "Comunicación intercultural",
+        "Recursos digitales",
+        "Presentaciones en otro idioma"
+      ],
+      "ejemplosProyectos": [
+        "Crear un pódcast bilingüe",
+        "Organizar una feria cultural",
+        "Elaborar una guía de conversación"
+      ],
+      "continuidad": [
+        "Idiomas",
+        "Traducción",
+        "Docencia",
+        "Comunicación"
+      ],
+      "seo": {
+        "title": "Idiomas | Oferta académica | Colegio Coronel Francisco Linares",
+        "description": "Conoce nuestra propuesta de bachillerato en Idiomas. Explora áreas de interés, proyectos ilustrativos y cómo solicitar información."
+      },
+      "oficial": null,
+      "estadoContenido": "BORRADOR_PENDIENTE_APROBACION"
+    },
+    {
+      "id": "diseno-grafico",
+      "slug": "diseno-grafico",
+      "titulo": "Diseño Gráfico",
+      "area": "creatividad-visual",
+      "etiquetaArea": "Creatividad visual",
+      "gancho": "Dale forma a tus ideas y aprende a comunicar con imágenes",
+      "resumen": "Descubre los fundamentos de la comunicación visual y desarrolla criterio creativo para construir piezas gráficas, explorar herramientas digitales y presentar propuestas de diseño.",
+      "imagen": null,
+      "intereses": [
+        "Ilustración",
+        "Fotografía",
+        "Identidad visual"
+      ],
+      "areasExplorar": [
+        "Teoría del color",
+        "Composición",
+        "Tipografía",
+        "Diseño editorial",
+        "Identidad visual",
+        "Producción digital"
+      ],
+      "ejemplosProyectos": [
+        "Diseñar la identidad de un evento escolar",
+        "Crear una portada de revista",
+        "Proponer una campaña visual comunitaria"
+      ],
+      "continuidad": [
+        "Diseño",
+        "Comunicación visual",
+        "Animación",
+        "Áreas creativas"
+      ],
+      "seo": {
+        "title": "Diseño Gráfico | Oferta académica | Colegio Coronel Francisco Linares",
+        "description": "Conoce nuestra propuesta de bachillerato en Diseño Gráfico. Explora áreas de interés, proyectos ilustrativos y cómo solicitar información."
+      },
+      "oficial": null,
+      "estadoContenido": "BORRADOR_PENDIENTE_APROBACION"
+    },
+    {
+      "id": "comunicaciones",
+      "slug": "comunicaciones",
+      "titulo": "Comunicaciones",
+      "area": "medios-y-expresion",
+      "etiquetaArea": "Medios y expresión",
+      "gancho": "Descubre cómo contar historias que informan y conectan",
+      "resumen": "Explora la escritura, la expresión oral, los medios audiovisuales y las plataformas digitales para comunicar ideas con creatividad, rigor y responsabilidad.",
+      "imagen": null,
+      "intereses": [
+        "Escritura",
+        "Fotografía y video",
+        "Medios digitales"
+      ],
+      "areasExplorar": [
+        "Redacción",
+        "Guion",
+        "Comunicación oral",
+        "Narrativa audiovisual",
+        "Medios digitales",
+        "Ética informativa"
+      ],
+      "ejemplosProyectos": [
+        "Producir un boletín escolar",
+        "Crear entrevistas cortas",
+        "Elaborar un pódcast comunitario"
+      ],
+      "continuidad": [
+        "Comunicación",
+        "Periodismo",
+        "Publicidad",
+        "Producción audiovisual"
+      ],
+      "seo": {
+        "title": "Comunicaciones | Oferta académica | Colegio Coronel Francisco Linares",
+        "description": "Conoce nuestra propuesta de bachillerato en Comunicaciones. Explora áreas de interés, proyectos ilustrativos y cómo solicitar información."
+      },
+      "oficial": null,
+      "estadoContenido": "BORRADOR_PENDIENTE_APROBACION"
+    },
+    {
+      "id": "general",
+      "slug": "general",
+      "titulo": "General",
+      "area": "formacion-integral",
+      "etiquetaArea": "Formación integral",
+      "gancho": "Fortalece tus conocimientos y mantén abiertas nuevas posibilidades",
+      "resumen": "Desarrolla una base académica amplia que integra pensamiento crítico, comunicación, ciencias, matemáticas y habilidades para continuar tu formación en distintas áreas.",
+      "imagen": null,
+      "intereses": [
+        "Ciencias y humanidades",
+        "Exploración académica",
+        "Razonamiento y análisis"
+      ],
+      "areasExplorar": [
+        "Matemáticas",
+        "Ciencias",
+        "Lenguaje y literatura",
+        "Estudios sociales",
+        "Competencias digitales",
+        "Proyectos interdisciplinarios"
+      ],
+      "ejemplosProyectos": [
+        "Organizar una feria de investigación",
+        "Realizar un proyecto comunitario",
+        "Crear una exposición interdisciplinaria"
+      ],
+      "continuidad": [
+        "Diversas áreas de estudios superiores"
+      ],
+      "seo": {
+        "title": "General | Oferta académica | Colegio Coronel Francisco Linares",
+        "description": "Conoce nuestra propuesta de bachillerato en General. Explora áreas de interés, proyectos ilustrativos y cómo solicitar información."
+      },
+      "oficial": null,
+      "estadoContenido": "BORRADOR_PENDIENTE_APROBACION"
+    }
+  ]
+}

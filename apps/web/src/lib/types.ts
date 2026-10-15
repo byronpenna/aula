@@ -22,6 +22,47 @@ export interface Permissions {
   permissions: string[];
 }
 
+export interface UserListItem {
+  id: string;
+  display_name: string;
+  email: string | null;
+  username: string | null;
+  membership_status: string;
+  role_codes: string[];
+}
+
+export interface Permission {
+  code: string;
+  description: string;
+}
+
+export interface RoleSummary {
+  code: string;
+  name: string;
+  is_system: boolean;
+  version: number;
+  permission_codes: string[];
+  assigned_user_count: number;
+}
+
+export interface RoleUser {
+  id: string;
+  display_name: string;
+  email: string | null;
+  membership_status: string;
+}
+
+export interface AuditEvent {
+  id: string;
+  actor_id: string | null;
+  actor_display_name: string | null;
+  action: string;
+  target_type: string;
+  target_id: string;
+  occurred_at: string;
+  request_id: string | null;
+}
+
 export interface LinkedStudent {
   student_id: string;
   school_id: string;
