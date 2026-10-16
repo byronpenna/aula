@@ -8,6 +8,7 @@ import { apiClient } from "../lib/apiClient";
 import type { Assignment, Course, CourseResources, CourseStudent } from "../lib/types";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { downloadFile } from "../lib/download";
 import { useAuth } from "../context/AuthContext";
 
@@ -85,11 +86,11 @@ export function CourseDetailPage() {
   });
 
   return (
-    <div>
+    <div className="space-y-4">
       {courseId && <CourseNameHeader courseId={courseId} isStaff={isStaff} />}
       {isStaff && courseId && <CourseStudentsSection courseId={courseId} />}
 
-      <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200" role="tablist">
+      <div className="flex flex-wrap gap-1 border-b border-brand-100" role="tablist">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -100,7 +101,7 @@ export function CourseDetailPage() {
             className={`focus-ring rounded-t-md px-3 py-2 text-sm font-medium ${
               tab === t.key
                 ? "border-b-2 border-brand-600 text-brand-900"
-                : "text-slate-500 hover:text-slate-900"
+                : "text-brand-700 hover:text-brand-900"
             }`}
           >
             {t.label}
@@ -114,131 +115,146 @@ export function CourseDetailPage() {
 
       {tab === "tareas" && (
         <>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Tareas del curso</h1>
-        {isStaff && (
-          <button
-            className="focus-ring rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
-            onClick={() => setShowForm((v) => !v)}
-          >
-            {showForm ? "Cancelar" : "Nueva tarea"}
-          </button>
-        )}
-      </div>
-
-      {isStaff && showForm && (
-        <form
-          onSubmit={handleSubmit((values) => createMutation.mutate(values))}
-          className="mb-6 rounded-lg border border-slate-200 bg-white p-4"
-          noValidate
-        >
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium" htmlFor="title">
-                Título
-              </label>
-              <input
-                id="title"
-                className="focus-ring w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                {...register("title")}
-              />
-              {errors.title && <p className="text-sm text-red-600">{errors.title.message}</p>}
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium" htmlFor="due_at">
-                Fecha límite
-              </label>
-              <input
-                id="due_at"
-                type="datetime-local"
-                className="focus-ring w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                {...register("due_at")}
-              />
-              {errors.due_at && <p className="text-sm text-red-600">{errors.due_at.message}</p>}
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium" htmlFor="max_score">
-                Puntaje máximo
-              </label>
-              <input
-                id="max_score"
-                type="number"
-                step="0.01"
-                defaultValue={100}
-                className="focus-ring w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                {...register("max_score")}
-              />
-              {errors.max_score && (
-                <p className="text-sm text-red-600">{errors.max_score.message}</p>
-              )}
-            </div>
-            <div className="flex items-end gap-2">
-              <input id="allow_late" type="checkbox" {...register("allow_late")} />
-              <label htmlFor="allow_late" className="text-sm">
-                Admite entregas tardías
-              </label>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-sm font-medium" htmlFor="instructions">
-                Instrucciones
-              </label>
-              <textarea
-                id="instructions"
-                className="focus-ring w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                rows={3}
-                {...register("instructions")}
-              />
-            </div>
+          <div className="flex items-center justify-between">
+            <h1 className="font-display text-xl font-semibold text-brand-900">
+              Tareas del curso
+            </h1>
+            {isStaff && (
+              <button
+                className="focus-ring rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+                onClick={() => setShowForm((v) => !v)}
+              >
+                {showForm ? "Cancelar" : "Nueva tarea"}
+              </button>
+            )}
           </div>
-          {createMutation.isError && <ErrorState error={createMutation.error} />}
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="focus-ring mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-          >
-            Guardar borrador
-          </button>
-        </form>
-      )}
 
-      {isLoading && <LoadingState />}
-      {error && <ErrorState error={error} />}
-      {data && data.length === 0 && (
-        <EmptyState
-          title="Sin tareas todavía"
-          description="Las tareas en borrador solo las ve quien las administra; los alumnos verán las publicadas."
-        />
-      )}
-      {data && data.length > 0 && (
-        <ul className="space-y-2">
-          {data.map((assignment) => (
-            <li
-              key={assignment.id}
-              className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4"
+          {isStaff && showForm && (
+            <form
+              onSubmit={handleSubmit((values) => createMutation.mutate(values))}
+              className="rounded-xl border border-brand-100 bg-white p-4"
+              noValidate
             >
-              <div>
-                <Link
-                  to={`/assignments/${assignment.id}`}
-                  className="focus-ring font-medium text-slate-900 hover:underline"
-                >
-                  {assignment.title}
-                </Link>
-                <p className="text-sm text-slate-500">
-                  Vence {new Date(assignment.due_at).toLocaleString()} · {assignment.status}
-                </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-600" htmlFor="title">
+                    Título
+                  </label>
+                  <input
+                    id="title"
+                    className="focus-ring w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    {...register("title")}
+                  />
+                  {errors.title && <p className="text-sm text-red-600">{errors.title.message}</p>}
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-600" htmlFor="due_at">
+                    Fecha límite
+                  </label>
+                  <input
+                    id="due_at"
+                    type="datetime-local"
+                    className="focus-ring w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    {...register("due_at")}
+                  />
+                  {errors.due_at && <p className="text-sm text-red-600">{errors.due_at.message}</p>}
+                </div>
+                <div>
+                  <label
+                    className="mb-1 block text-sm font-medium text-slate-600"
+                    htmlFor="max_score"
+                  >
+                    Puntaje máximo
+                  </label>
+                  <input
+                    id="max_score"
+                    type="number"
+                    step="0.01"
+                    defaultValue={100}
+                    className="focus-ring w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    {...register("max_score")}
+                  />
+                  {errors.max_score && (
+                    <p className="text-sm text-red-600">{errors.max_score.message}</p>
+                  )}
+                </div>
+                <div className="flex items-end gap-2">
+                  <input id="allow_late" type="checkbox" {...register("allow_late")} />
+                  <label htmlFor="allow_late" className="text-sm text-slate-600">
+                    Admite entregas tardías
+                  </label>
+                </div>
+                <div className="sm:col-span-2">
+                  <label
+                    className="mb-1 block text-sm font-medium text-slate-600"
+                    htmlFor="instructions"
+                  >
+                    Instrucciones
+                  </label>
+                  <textarea
+                    id="instructions"
+                    className="focus-ring w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    rows={3}
+                    {...register("instructions")}
+                  />
+                </div>
               </div>
-              {isStaff && assignment.status === "draft" && (
-                <button
-                  className="focus-ring rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
-                  onClick={() => publishMutation.mutate(assignment.id)}
+              {createMutation.isError && <ErrorState error={createMutation.error} />}
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="focus-ring mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+              >
+                Guardar borrador
+              </button>
+            </form>
+          )}
+
+          {isLoading && <LoadingState />}
+          {error && <ErrorState error={error} />}
+          {data && data.length === 0 && (
+            <EmptyState
+              title="Sin tareas todavía"
+              description="Las tareas en borrador solo las ve quien las administra; los alumnos verán las publicadas."
+            />
+          )}
+          {data && data.length > 0 && (
+            <ul className="space-y-2">
+              {data.map((assignment) => (
+                <li
+                  key={assignment.id}
+                  className="flex items-center justify-between rounded-xl border border-brand-100 bg-white p-4"
                 >
-                  Publicar
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+                  <div>
+                    <Link
+                      to={`/assignments/${assignment.id}`}
+                      className="focus-ring font-display font-medium text-brand-900 hover:underline"
+                    >
+                      {assignment.title}
+                    </Link>
+                    <p className="text-sm text-slate-500">
+                      Vence {new Date(assignment.due_at).toLocaleString()} ·{" "}
+                      <span
+                        className={`font-medium ${
+                          assignment.status === "published" ? "text-emerald-700" : "text-amber-700"
+                        }`}
+                      >
+                        {assignment.status}
+                      </span>
+                    </p>
+                  </div>
+                  {isStaff && assignment.status === "draft" && (
+                    <button
+                      className="focus-ring rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+                      onClick={() => publishMutation.mutate(assignment.id)}
+                    >
+                      Publicar
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </>
       )}
     </div>
@@ -276,57 +292,60 @@ function CourseNameHeader({ courseId, isStaff }: { courseId: string; isStaff: bo
   const label = course.name ?? `Curso ${course.id.slice(0, 8)}`;
 
   return (
-    <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
-      {isEditing ? (
-        <form
-          className="flex flex-wrap items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (nameDraft.trim()) renameMutation.mutate(nameDraft);
-          }}
-        >
-          <input
-            autoFocus
-            value={nameDraft}
-            onChange={(e) => setNameDraft(e.target.value)}
-            className="focus-ring flex-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
-          />
-          <button
-            type="submit"
-            disabled={renameMutation.isPending}
-            className="focus-ring rounded-md bg-brand-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+    <div>
+      <Breadcrumbs items={[{ label: "Cursos", to: "/courses" }, { label }]} />
+      <div className="rounded-xl border border-brand-100 bg-white p-4">
+        {isEditing ? (
+          <form
+            className="flex flex-wrap items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (nameDraft.trim()) renameMutation.mutate(nameDraft);
+            }}
           >
-            Guardar
-          </button>
-          <button
-            type="button"
-            className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
-            onClick={() => setIsEditing(false)}
-          >
-            Cancelar
-          </button>
-        </form>
-      ) : (
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold text-slate-900">{label}</h1>
-            <StatusBadge status={course.status} />
-          </div>
-          {isStaff && (
+            <input
+              autoFocus
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              className="focus-ring flex-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={renameMutation.isPending}
+              className="focus-ring rounded-md bg-brand-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+            >
+              Guardar
+            </button>
             <button
               type="button"
               className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
-              onClick={() => {
-                setNameDraft(course.name ?? "");
-                setIsEditing(true);
-              }}
+              onClick={() => setIsEditing(false)}
             >
-              Cambiar nombre
+              Cancelar
             </button>
-          )}
-        </div>
-      )}
-      {renameMutation.isError && <ErrorState error={renameMutation.error} />}
+          </form>
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h1 className="font-display text-xl font-semibold text-brand-900">{label}</h1>
+              <StatusBadge status={course.status} />
+            </div>
+            {isStaff && (
+              <button
+                type="button"
+                className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+                onClick={() => {
+                  setNameDraft(course.name ?? "");
+                  setIsEditing(true);
+                }}
+              >
+                Cambiar nombre
+              </button>
+            )}
+          </div>
+        )}
+        {renameMutation.isError && <ErrorState error={renameMutation.error} />}
+      </div>
     </div>
   );
 }
@@ -375,9 +394,9 @@ function CourseStudentsSection({ courseId }: { courseId: string }) {
       : student.student_number;
 
   return (
-    <section className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
+    <section className="rounded-xl border border-brand-100 bg-white p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-slate-900">Estudiantes inscritos</h2>
+        <h2 className="text-base font-semibold text-brand-900">Estudiantes inscritos</h2>
         <button
           type="button"
           className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
@@ -438,15 +457,24 @@ function CourseStudentsSection({ courseId }: { courseId: string }) {
         />
       )}
       {data && data.length > 0 && (
-        <ul className="divide-y divide-slate-100">
-          {data.map((student) => (
-            <li key={student.id} className="py-2">
-              <p className="font-medium text-slate-900">
-                {student.display_name ?? "Sin nombre registrado"}
-              </p>
-              <p className="text-sm text-slate-500">Matrícula {student.student_number}</p>
-            </li>
-          ))}
+        <ul className="divide-y divide-brand-50">
+          {data.map((student) => {
+            const name = student.display_name ?? "Sin nombre registrado";
+            return (
+              <li key={student.id} className="flex items-center gap-3 py-2.5">
+                <span
+                  aria-hidden="true"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 font-display text-sm font-bold text-brand-700"
+                >
+                  {name.charAt(0).toUpperCase()}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-brand-900">{name}</p>
+                  <p className="text-sm text-slate-500">Matrícula {student.student_number}</p>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
@@ -567,7 +595,7 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
 
       <div className="space-y-4">
         {data.sections.map((section) => (
-          <section key={section.id} className="rounded-lg border border-slate-200 bg-white p-4">
+          <section key={section.id} className="rounded-xl border border-brand-100 bg-white p-4">
             <div className="mb-2 flex items-center justify-between gap-2">
               {editingSectionId === section.id ? (
                 <form
@@ -602,7 +630,7 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
                 </form>
               ) : (
                 <>
-                  <h3 className="font-medium text-slate-900">{section.name}</h3>
+                  <h3 className="font-semibold text-brand-900">{section.name}</h3>
                   {isStaff && (
                     <div className="flex shrink-0 gap-2">
                       <button
@@ -662,8 +690,8 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
         ))}
 
         {data.unsectioned_files.length > 0 && (
-          <section className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
-            <h3 className="mb-2 font-medium text-slate-700">Sin sección</h3>
+          <section className="rounded-xl border border-dashed border-brand-200 bg-brand-50/60 p-4">
+            <h3 className="mb-2 font-semibold text-brand-800">Sin sección</h3>
             <p className="mb-2 text-xs text-slate-500">
               PDFs cuya sección fue eliminada; siguen disponibles aquí.
             </p>
@@ -719,7 +747,7 @@ function ResourceUploadInput({
   }
 
   return (
-    <div className="mt-2 border-t border-slate-100 pt-2">
+    <div className="mt-2 border-t border-brand-50 pt-2">
       <input
         ref={inputRef}
         type="file"
