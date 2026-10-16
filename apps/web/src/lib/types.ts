@@ -31,6 +31,11 @@ export interface UserListItem {
   role_codes: string[];
 }
 
+export interface UserCreateResult extends UserListItem {
+  invitation_sent: boolean;
+  temporary_password: string | null;
+}
+
 export interface Permission {
   code: string;
   description: string;

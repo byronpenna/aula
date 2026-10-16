@@ -1,0 +1,1 @@
+Guía de ejercicios 1 a 10 — fracciones (archivo de prueba para Cypress).

@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../lib/apiClient";
-import type { Permissions, RoleSummary, UserListItem } from "../lib/types";
+import type { Permissions, RoleSummary, UserCreateResult, UserListItem } from "../lib/types";
 import { ErrorState, ForbiddenState, LoadingState } from "../components/States";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { StatusBadge } from "../components/StatusBadge";
@@ -16,8 +16,10 @@ const actionBtn = "focus-ring rounded-md border border-slate-300 px-2.5 py-1 tex
 
 // Genera una contraseña que ya cumple la política real del User Pool de Cognito
 // (infra/lib/identity-stack.ts: 12+ caracteres, mayúscula, minúscula, dígito) — se
-// muestra editable en el propio formulario; nunca se envía por correo (no hay SES
-// configurado), el administrador la comunica por su cuenta.
+// muestra editable en el propio formulario. Si el backend tiene el correo de
+// invitaciones configurado (MAIL_FROM_ADDRESS), esta contraseña viaja solo por
+// correo y la respuesta de POST /users no la repite (ver `UserCreateResult`);
+// si no, el administrador la comunica por su cuenta.
 function generatePassword(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
   const bytes = new Uint32Array(14);
@@ -67,6 +69,7 @@ function AdminUsersContent() {
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [lastResult, setLastResult] = useState<UserCreateResult | null>(null);
 
   const roles = useQuery<RoleSummary[]>({
     queryKey: ["roles"],
@@ -106,14 +109,15 @@ function AdminUsersContent() {
   const createMutation = useMutation({
     mutationFn: async (values: CreateUserForm) =>
       (
-        await apiClient.post("/users", {
+        await apiClient.post<UserCreateResult>("/users", {
           ...values,
           email: values.email || null,
         })
       ).data,
-    onSuccess: () => {
+    onSuccess: (result) => {
       invalidateUsers();
       reset({ password: generatePassword() });
+      setLastResult(result);
       setShowForm(false);
     },
   });
@@ -130,18 +134,49 @@ function AdminUsersContent() {
         </div>
         <button
           type="button"
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => {
+            setShowForm((v) => !v);
+            setLastResult(null);
+          }}
           className="focus-ring rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
         >
           {showForm ? "Cancelar" : "Nuevo usuario"}
         </button>
       </div>
 
+      {lastResult && !showForm && (
+        <section
+          className={`rounded-xl border p-4 text-sm ${
+            lastResult.invitation_sent
+              ? "border-green-200 bg-green-50 text-green-800"
+              : "border-amber-200 bg-amber-50 text-amber-800"
+          }`}
+        >
+          {lastResult.invitation_sent ? (
+            <p>
+              Se creó la cuenta de <strong>{lastResult.display_name}</strong> y se envió la invitación
+              con sus credenciales a <strong>{lastResult.email}</strong>.
+            </p>
+          ) : (
+            <>
+              <p>
+                Se creó la cuenta de <strong>{lastResult.display_name}</strong>. No hay servicio de
+                correo configurado para este ambiente: comparte tú mismo la contraseña con la persona;
+                deberá cambiarla en su primer inicio de sesión.
+              </p>
+              <p className="mt-1 font-mono text-xs">
+                Usuario: {lastResult.username} · Contraseña: {lastResult.temporary_password}
+              </p>
+            </>
+          )}
+        </section>
+      )}
+
       {showForm && (
         <section className="rounded-xl border border-brand-100 bg-white p-4">
           <p className="mb-3 text-xs text-amber-700">
-            No hay servicio de correo configurado: la contraseña no se envía por email. Cópiala y
-            compártela tú mismo con la persona; deberá cambiarla en su primer inicio de sesión.
+            Si este ambiente no tiene servicio de correo configurado, la contraseña no se enviará por
+            email: deberás copiarla y compartirla tú mismo con la persona después de crear la cuenta.
           </p>
           <form
             onSubmit={handleSubmit((values) => createMutation.mutate(values))}

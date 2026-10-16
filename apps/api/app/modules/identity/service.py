@@ -13,8 +13,7 @@ from app.core.deps import CurrentMembership
 from app.core.errors import ConflictError, NotFoundError, UnauthorizedError, UnprocessableError
 from app.core.permissions import ROLES_MANAGE, USERS_MANAGE
 from app.core.security import issue_local_token
-from app.modules.identity import cognito_admin
-from app.modules.identity import mailer
+from app.modules.identity import cognito_admin, mailer
 from app.modules.identity import repository as identity_repo
 from app.modules.identity.models import (
     AuditEvent,

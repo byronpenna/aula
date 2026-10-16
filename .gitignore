@@ -14,6 +14,11 @@ infra/cdk.out/
 infra/dist/
 *.tsbuildinfo
 
+# Cypress (artefactos de corridas locales, no fixtures ni specs)
+apps/web/cypress/videos/
+apps/web/cypress/screenshots/
+apps/web/cypress/downloads/
+
 # Env / secretos
 .env
 .env.*

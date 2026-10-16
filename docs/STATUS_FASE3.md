@@ -12,6 +12,7 @@
 | Persistencia de sesión (zustand + sessionStorage) | ✅ Hecho | `4a9e5bf fix session` |
 | Fase 1 — marca institucional + paridad CRUD de Academia | ✅ Hecho | `4150283 phase1` |
 | Fase 3a — Usuarios, Roles, Permisos y Auditoría (alcance colegio, Cognito real) | ✅ Código completo — ⚠️ **sin commit, sin deploy de infra** | *(working tree)* |
+| Invitación por correo real (SES) | ✅ Código completo — ⚠️ **sin identidad SES verificada, sin deploy** | *(working tree)* |
 
 El proyecto corre localmente (`docker compose up -d` con el override de puerto
 descrito en `compose.override.yaml`): API en `http://localhost:8000`, DB en
@@ -106,7 +107,47 @@ descrito en `compose.override.yaml`): API en `http://localhost:8000`, DB en
   de un rol con reflejo real en lo que ve un docente, bloqueo del 409 al
   "último administrador".
 
-### 2.4 Entorno local
+### 2.4 Invitación por correo real (SES)
+
+Siguiendo con el patrón dual ya usado para altas locales/Cognito, `create_user`
+ahora también decide si puede enviar la invitación por correo:
+
+- **Nuevo módulo `identity/mailer.py`**: `send_invitation_email()` llama
+  `ses:SendEmail` (mismo patrón de `cognito_admin.py`: aislado para poder
+  simular `boto3.client` en tests). Nunca lanza — si SES rechaza el envío, la
+  cuenta ya creada se mantiene y el llamador decide qué mostrar.
+- **`core/config.py`**: `mail_from_address` (si está vacío, el correo queda
+  deshabilitado — es el caso por defecto en todos los ambientes hoy),
+  `mail_from_name`, `app_base_url` (link de login que va en el cuerpo del
+  correo).
+- **`identity/service.py::create_user`**: si hay `email` en el alta y
+  `mail_from_address` configurado, envía la invitación (usuario + contraseña
+  temporal + link de login) y devuelve si se envió.
+- **Respuesta de `POST /users`** (`UserCreateOut`): `invitation_sent: bool` +
+  `temporary_password: str | None` — la contraseña **nunca** viaja en la
+  respuesta HTTP si ya se envió por correo (no duplicar el secreto en dos
+  canales, uno de los cuales puede quedar en logs de acceso/proxy).
+- **Frontend (`AdminUsersPage.tsx`)**: tras crear la cuenta, muestra un aviso
+  distinto según `invitation_sent` — "se envió la invitación a {email}" o la
+  contraseña para copiar y compartir a mano.
+- **Infra (`infra/lib/api-stack.ts`)**: nuevo prop `sesFromEmail?: string` —
+  sin definir (el caso hoy), no se otorga ningún permiso `ses:*` y
+  `MAIL_FROM_ADDRESS` queda vacío en el Lambda. Si se define, otorga
+  `ses:SendEmail`/`ses:SendRawEmail` acotado al ARN exacto de esa identidad
+  (nunca `*`, verificado con un test nuevo en `security.test.ts`).
+- **Tests nuevos** en `test_users_management.py`: envío exitoso (SES simulado),
+  envío fallido no revierte el alta, y el caso sin correo configurado sigue
+  devolviendo la contraseña en la respuesta.
+
+**Por qué no se desplegó nada todavía**: SES exige una identidad verificada
+(dominio o dirección de correo) antes de poder enviar, y ningún entorno de
+este proyecto tiene todavía un dominio propio ni una dirección verificada
+(Cognito/CloudFront usan dominios AWS por defecto — ver `infra/bin/aula.ts`).
+El código queda listo y parametrizado por `sesFromEmail`/`MAIL_FROM_ADDRESS`;
+falta que el propietario decida qué dirección/dominio usar, la verifique en
+SES, y la pase a `infra/bin/aula.ts` antes de desplegar.
+
+### 2.5 Entorno local
 
 - `compose.override.yaml` (gitignorado): remapea el puerto publicado de `db`
   a `5433` porque el `5432` del host ya estaba ocupado por un contenedor de
@@ -122,55 +163,44 @@ descrito en `compose.override.yaml`): API en `http://localhost:8000`, DB en
 - Navegador: flujo completo de Fase 3a verificado manualmente (login, alta de
   usuario, edición de permisos, bloqueo de último admin).
 
-## 4. ⚠️ Pendiente inmediato — nada de la Fase 3a está commiteado
+## 4. Estado de commits
 
-`git status` confirma que **todo el bloque 2.3** (Usuarios/Roles/Permisos/
-Auditoría + el cambio de IAM en infra) sigue solo en el árbol de trabajo:
+La Fase 3a completa (Usuarios/Roles/Permisos/Auditoría) **y** el bloque de
+invitación por correo (2.4) ya quedaron commiteados en `3bd6845 changes`. Lo
+único que sigue sin commitear es el ajuste final de esta misma iteración
+(la respuesta `UserCreateOut`/`invitation_sent` en `create_user` y su reflejo
+en el formulario de alta):
 
 ```
-M  apps/api/app/core/config.py
-M  apps/api/app/core/permissions.py
-M  apps/api/app/modules/identity/models.py
-M  apps/api/app/modules/identity/repository.py
-M  apps/api/app/modules/identity/router.py
-M  apps/api/app/modules/identity/schemas.py
 M  apps/api/app/modules/identity/service.py
-M  apps/api/tests/factories.py
-M  apps/web/src/App.tsx
 M  apps/web/src/lib/types.ts
-M  apps/web/src/routes/AdminLayout.tsx
-M  docs/admin-discovery.md
-M  infra/lib/api-stack.ts
-?? apps/api/alembic/versions/492d3c002ca9_roles_is_system_and_version.py
-?? apps/api/app/modules/identity/cognito_admin.py
-?? apps/api/tests/test_audit_log.py
-?? apps/api/tests/test_roles_management.py
-?? apps/api/tests/test_users_management.py
-?? apps/web/src/routes/AdminRolesPage.tsx
-?? apps/web/src/routes/AdminUsersPage.tsx
+M  apps/web/src/routes/AdminUsersPage.tsx
+M  docs/STATUS_FASE3.md
 ```
 
 No se ha creado ningún commit en esta sesión (no se pidió). Cuando quieras,
 pide explícitamente el commit y lo preparo.
 
-También aparece sin seguimiento `apps/public_web/public_web_oferta_bachilleratos_agente/`
-— un paquete nuevo que no se ha investigado ni tocado en esta sesión; si
-quieres que se trabaje, dilo explícitamente.
-
 ## 5. Próximos pasos
 
-1. **Commit del bloque Fase 3a** (pendiente de tu confirmación explícita).
-2. **`cdk deploy` del cambio de IAM** (`cognito-idp:AdminCreateUser`) — acción
-   del propietario de la cuenta AWS; sin esto, la alta de usuarios reales vía
-   Cognito fallará por falta de permisos en el entorno desplegado (en local
-   funciona porque usa `LocalAuthCredential`).
-3. **RBAC granular (Fase 3b)** — coordinador limitado a año/grado/sección:
+1. **Commit del ajuste final de invitación por correo** (los 4 archivos de la
+   sección 4), pendiente de tu confirmación explícita.
+2. **Verificar una identidad en SES** (dominio propio o una dirección de
+   correo) y pasarla como `sesFromEmail` en `infra/bin/aula.ts` — sin esto,
+   `identity/mailer.py` queda inactivo en cualquier entorno desplegado y
+   `create_user` sigue mostrando la contraseña en el formulario en vez de
+   enviarla.
+3. **`cdk deploy`** del cambio de IAM para Cognito (`cognito-idp:AdminCreateUser`,
+   ya commiteado) y, una vez verificada la identidad SES del punto 2, del
+   permiso `ses:SendEmail` — acción del propietario de la cuenta AWS; sin el
+   primero, la alta de usuarios reales vía Cognito fallará por falta de
+   permisos en el entorno desplegado (en local funciona porque usa
+   `LocalAuthCredential`).
+4. **RBAC granular (Fase 3b)** — coordinador limitado a año/grado/sección:
    pendiente de que definan la política institucional de qué puede ver/hacer
    un coordinador.
-4. **Pantalla de Auditoría dedicada** (`/admin/audit-logs`) — el endpoint ya
+5. **Pantalla de Auditoría dedicada** (`/admin/audit-logs`) — el endpoint ya
    existe (`GET /audit-logs`), falta la UI.
-5. **Invitación por correo real** — no hay SES configurado; hoy la
-   contraseña generada se entrega a mano desde el formulario de alta.
 6. **Limpieza del dato duplicado preexistente** en `enrollments` del dev local
    (rompe el reseed idempotente de `scripts/seed.py`; no es un bug introducido
    en esta sesión, documentado y no corregido por estar fuera de alcance).

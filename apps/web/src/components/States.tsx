@@ -6,8 +6,8 @@ import { ApiError } from "../lib/apiClient";
 
 export function LoadingState({ label = "Cargando…" }: { label?: string }) {
   return (
-    <div role="status" className="flex items-center gap-2 p-6 text-slate-500">
-      <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600" />
+    <div role="status" className="flex items-center gap-2 p-6 text-brand-600">
+      <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand-200 border-t-brand-700" />
       <span>{label}</span>
     </div>
   );
@@ -15,8 +15,8 @@ export function LoadingState({ label = "Cargando…" }: { label?: string }) {
 
 export function EmptyState({ title, description }: { title: string; description?: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-slate-500">
-      <p className="font-medium">{title}</p>
+    <div className="rounded-xl border border-dashed border-brand-200 p-6 text-center text-brand-600">
+      <p className="font-display font-semibold text-brand-900">{title}</p>
       {description && <p className="mt-1 text-sm">{description}</p>}
     </div>
   );
@@ -24,8 +24,8 @@ export function EmptyState({ title, description }: { title: string; description?
 
 export function ForbiddenState({ message }: { message?: string }) {
   return (
-    <div className="rounded-lg border border-amber-300 bg-amber-50 p-6 text-amber-800" role="alert">
-      <p className="font-medium">Acceso no autorizado</p>
+    <div className="rounded-xl border border-amber-300 bg-amber-50 p-6 text-amber-800" role="alert">
+      <p className="font-display font-semibold">Acceso no autorizado</p>
       <p className="mt-1 text-sm">{message ?? "No tienes permiso para ver este contenido."}</p>
     </div>
   );
@@ -33,8 +33,8 @@ export function ForbiddenState({ message }: { message?: string }) {
 
 export function OfflineState() {
   return (
-    <div className="rounded-lg border border-slate-300 bg-slate-100 p-6 text-slate-700" role="alert">
-      <p className="font-medium">Sin conexión</p>
+    <div className="rounded-xl border border-brand-100 bg-brand-50 p-6 text-brand-700" role="alert">
+      <p className="font-display font-semibold text-brand-900">Sin conexión</p>
       <p className="mt-1 text-sm">
         No se pudo contactar al servidor. Tus cambios podrían no haberse guardado.
       </p>
@@ -53,8 +53,8 @@ export function ErrorState({ error, children }: { error: unknown; children?: Rea
   }
   const message = error instanceof Error ? error.message : "Ocurrió un error inesperado.";
   return (
-    <div className="rounded-lg border border-red-300 bg-red-50 p-6 text-red-800" role="alert">
-      <p className="font-medium">No se pudo completar la operación</p>
+    <div className="rounded-xl border border-red-300 bg-red-50 p-6 text-red-800" role="alert">
+      <p className="font-display font-semibold">No se pudo completar la operación</p>
       <p className="mt-1 text-sm">{message}</p>
       {children}
     </div>
