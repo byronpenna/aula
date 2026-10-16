@@ -163,3 +163,7 @@ class CourseStudentOut(BaseModel):
     id: uuid.UUID
     student_number: str
     display_name: str | None
+
+
+class CourseEnrollStudent(BaseModel):
+    student_id: uuid.UUID

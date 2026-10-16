@@ -207,6 +207,47 @@ def list_submission_files(
     return files_repo.list_files(db, current.school_id, "submission", submission_id)
 
 
+def upload_resource_file(
+    db: Session,
+    settings: Settings,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    section_id: uuid.UUID,
+    filename: str,
+    content_type: str,
+    content: bytes,
+) -> File:
+    """Recursos del curso (sección nueva, no del documento base): solo PDF, y solo
+    quien administra el curso puede subirlos — igual criterio que el material de
+    tarea (ver upload_assignment_file), pero course-scoped vía
+    academics_service.require_course_staff_access en vez de un chequeo de rol
+    suelto."""
+    section = learning_repo.get_resource_section(db, current.school_id, section_id)
+    if section is None:
+        raise NotFoundError("La sección de recursos indicada no existe en este colegio.")
+    course = academics_repo.get_course(db, current.school_id, section.course_id)
+    if course is None:
+        raise NotFoundError("El curso de la sección no existe en este colegio.")
+    academics_service.require_course_staff_access(db, current, user_id, course)
+
+    if content_type != "application/pdf":
+        raise UnprocessableError(
+            "Solo se admiten archivos PDF en los recursos del curso.",
+            details={"allowed": ["application/pdf"]},
+        )
+    return _store(
+        db,
+        settings,
+        school_id=current.school_id,
+        owner_user_id=user_id,
+        attached_to_type="resource_section",
+        attached_to_id=section_id,
+        filename=filename,
+        content_type=content_type,
+        content=content,
+    )
+
+
 def get_download(
     db: Session,
     settings: Settings,
@@ -227,7 +268,18 @@ def get_download(
         if submission is None:
             raise NotFoundError("La entrega asociada ya no existe.")
         academics_service.require_student_access(db, current, user_id, submission.student_id)
-    else:  # pragma: no cover - no debería ocurrir, tipos cerrados a los dos de arriba
+    elif file.attached_to_type == "resource_section":
+        # Una sección eliminada (baja lógica) sigue resolviéndose aquí a propósito
+        # (sección 6): el PDF no deja de ser descargable solo porque su sección se
+        # "eliminó" — ver learning_service.delete_resource_section.
+        section = learning_repo.get_resource_section(db, current.school_id, file.attached_to_id)
+        if section is None:
+            raise NotFoundError("La sección asociada ya no existe.")
+        course = academics_repo.get_course(db, current.school_id, section.course_id)
+        if course is None:
+            raise NotFoundError("El curso de la sección no existe en este colegio.")
+        academics_service.require_course_access(db, current, user_id, course)
+    else:  # pragma: no cover - no debería ocurrir, tipos cerrados a los de arriba
         raise NotFoundError("El archivo indicado no existe en este colegio.")
 
     storage = get_storage(settings)

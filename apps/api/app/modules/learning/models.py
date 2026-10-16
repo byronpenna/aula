@@ -58,6 +58,22 @@ class Submission(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
     version: Mapped[int] = mapped_column(nullable=False, default=0)
 
 
+class ResourceSection(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
+    """Carpeta de recursos (PDFs) de un curso. "active" | "deleted" (baja lógica,
+    igual criterio que Course.status): eliminar una sección nunca borra sus
+    archivos — siguen existiendo en `files` (attached_to_type="resource_section"),
+    solo se saca la sección de los grupos visibles y sus PDFs se muestran
+    agrupados como "Sin sección" (ver learning_service.get_course_resources)."""
+
+    __tablename__ = "resource_sections"
+
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("courses.id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(nullable=False, default="active")
+
+
 class SubmissionRevision(UUIDPKMixin, Base):
     """Inmutable: nunca se hace UPDATE de una revisión existente, solo INSERT de la
     siguiente (sección 7 y 9)."""

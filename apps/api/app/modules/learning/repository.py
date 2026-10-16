@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.learning.models import Assignment, Submission, SubmissionRevision
+from app.modules.learning.models import Assignment, ResourceSection, Submission, SubmissionRevision
 
 
 def get_assignment(
@@ -64,6 +64,24 @@ def list_submissions_for_student(
         Submission.school_id == school_id, Submission.student_id == student_id
     )
     return list(db.execute(stmt).scalars().all())
+
+
+def list_resource_sections(
+    db: Session, school_id: uuid.UUID, course_id: uuid.UUID
+) -> list[ResourceSection]:
+    stmt = select(ResourceSection).where(
+        ResourceSection.school_id == school_id, ResourceSection.course_id == course_id
+    ).order_by(ResourceSection.created_at)
+    return list(db.execute(stmt).scalars().all())
+
+
+def get_resource_section(
+    db: Session, school_id: uuid.UUID, section_id: uuid.UUID
+) -> ResourceSection | None:
+    stmt = select(ResourceSection).where(
+        ResourceSection.id == section_id, ResourceSection.school_id == school_id
+    )
+    return db.execute(stmt).scalar_one_or_none()
 
 
 def next_revision_number(db: Session, submission_id: uuid.UUID) -> int:

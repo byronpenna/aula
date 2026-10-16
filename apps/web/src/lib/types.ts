@@ -131,6 +131,18 @@ export interface CourseStudent {
   display_name: string | null;
 }
 
+export interface ResourceSectionWithFiles {
+  id: string;
+  name: string;
+  status: string;
+  files: FileAttachment[];
+}
+
+export interface CourseResources {
+  sections: ResourceSectionWithFiles[];
+  unsectioned_files: FileAttachment[];
+}
+
 export interface CourseTeacher {
   id: string;
   course_id: string;

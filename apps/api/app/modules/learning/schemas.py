@@ -6,6 +6,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.modules.files.schemas import FileOut
+
 
 class AssignmentCreate(BaseModel):
     title: str
@@ -54,3 +56,31 @@ class SubmissionOut(BaseModel):
 class SubmissionSubmitRequest(BaseModel):
     body: str | None = None
     version: int
+
+
+class ResourceSectionCreate(BaseModel):
+    name: str
+
+
+class ResourceSectionUpdate(BaseModel):
+    name: str
+
+
+class ResourceSectionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    course_id: uuid.UUID
+    name: str
+    status: str
+
+
+class ResourceSectionWithFilesOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    status: str
+    files: list[FileOut]
+
+
+class CourseResourcesOut(BaseModel):
+    sections: list[ResourceSectionWithFilesOut]
+    unsectioned_files: list[FileOut]

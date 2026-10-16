@@ -15,10 +15,12 @@ from app.core.deps import CurrentMembership
 from app.core.errors import ConflictError, NotFoundError, UnprocessableError
 from app.modules.academics import repository as academics_repo
 from app.modules.academics import service as academics_service
+from app.modules.academics.models import Course
+from app.modules.files import repository as files_repo
 from app.modules.identity import repository as identity_repo
 from app.modules.identity import service as identity_service
 from app.modules.learning import repository as learning_repo
-from app.modules.learning.models import Assignment, Submission, SubmissionRevision
+from app.modules.learning.models import Assignment, ResourceSection, Submission, SubmissionRevision
 from app.modules.learning.schemas import AssignmentCreate, AssignmentUpdate
 
 
@@ -280,3 +282,135 @@ def list_submissions_for_student(
     (sección 1: entrega vertical de la primera fase)."""
     academics_service.require_student_access(db, current, user_id, student_id)
     return learning_repo.list_submissions_for_student(db, current.school_id, student_id)
+
+
+# --- Recursos del curso (secciones de PDFs) --------------------------------
+#
+# Ver el curso (academics_service.require_course_access) alcanza para cualquier
+# rol con acceso de lectura al curso; crear/renombrar/eliminar una sección exige
+# administrarlo (require_course_staff_access: admin/coordinación, o el docente
+# asignado a este curso puntual — ver academics/service.py).
+
+
+def _require_resource_section(
+    db: Session, current: CurrentMembership, section_id: uuid.UUID
+) -> tuple[ResourceSection, Course]:
+    section = learning_repo.get_resource_section(db, current.school_id, section_id)
+    if section is None:
+        raise NotFoundError("La sección de recursos indicada no existe en este colegio.")
+    course = _require_course(db, current, section.course_id)
+    return section, course
+
+
+def _clean_name(name: str) -> str:
+    return " ".join(name.strip().split())
+
+
+def create_resource_section(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    course_id: uuid.UUID,
+    name: str,
+    request_id: str | None,
+) -> ResourceSection:
+    course = _require_course(db, current, course_id)
+    academics_service.require_course_staff_access(db, current, user_id, course)
+    if course.status == "archived":
+        raise UnprocessableError("El curso está archivado; no admite secciones nuevas.")
+    clean_name = _clean_name(name)
+    if not clean_name:
+        raise UnprocessableError("El nombre no puede estar vacío.")
+
+    section = ResourceSection(school_id=current.school_id, course_id=course_id, name=clean_name)
+    db.add(section)
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="resource_section.create",
+        target_type="resource_section",
+        target_id=str(section.id),
+        request_id=request_id,
+    )
+    db.commit()
+    db.refresh(section)
+    return section
+
+
+def rename_resource_section(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    section_id: uuid.UUID,
+    name: str,
+    request_id: str | None,
+) -> ResourceSection:
+    section, course = _require_resource_section(db, current, section_id)
+    academics_service.require_course_staff_access(db, current, user_id, course)
+    clean_name = _clean_name(name)
+    if not clean_name:
+        raise UnprocessableError("El nombre no puede estar vacío.")
+
+    section.name = clean_name
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="resource_section.rename",
+        target_type="resource_section",
+        target_id=str(section.id),
+        request_id=request_id,
+    )
+    db.commit()
+    db.refresh(section)
+    return section
+
+
+def delete_resource_section(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    section_id: uuid.UUID,
+    request_id: str | None,
+) -> ResourceSection:
+    """Baja lógica (sección 6, mismo criterio que Course.status): nunca se borra la
+    fila ni sus archivos — siguen en `files`, solo se agrupan como "Sin sección" en
+    vez de bajo este nombre (ver get_course_resources)."""
+    section, course = _require_resource_section(db, current, section_id)
+    academics_service.require_course_staff_access(db, current, user_id, course)
+    if section.status != "deleted":
+        section.status = "deleted"
+        identity_service.record_audit_event(
+            db,
+            school_id=current.school_id,
+            actor_id=current.membership.user_id,
+            action="resource_section.delete",
+            target_type="resource_section",
+            target_id=str(section.id),
+            request_id=request_id,
+        )
+        db.commit()
+        db.refresh(section)
+    return section
+
+
+def get_course_resources(
+    db: Session, current: CurrentMembership, user_id: uuid.UUID, course_id: uuid.UUID
+) -> dict:
+    course = _require_course(db, current, course_id)
+    academics_service.require_course_access(db, current, user_id, course)
+
+    all_sections = learning_repo.list_resource_sections(db, current.school_id, course_id)
+    sections = []
+    unsectioned_files = []
+    for section in all_sections:
+        files = files_repo.list_files(db, current.school_id, "resource_section", section.id)
+        if section.status == "deleted":
+            unsectioned_files.extend(files)
+        else:
+            sections.append({
+                "id": section.id, "name": section.name, "status": section.status, "files": files,
+            })
+
+    return {"sections": sections, "unsectioned_files": unsectioned_files}

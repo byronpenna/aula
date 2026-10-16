@@ -11,11 +11,15 @@ from app.db.session import get_db
 from app.modules.identity.models import User
 from app.modules.learning import repository as learning_repo
 from app.modules.learning import service as learning_service
-from app.modules.learning.models import Assignment
+from app.modules.learning.models import Assignment, ResourceSection
 from app.modules.learning.schemas import (
     AssignmentCreate,
     AssignmentOut,
     AssignmentUpdate,
+    CourseResourcesOut,
+    ResourceSectionCreate,
+    ResourceSectionOut,
+    ResourceSectionUpdate,
     SubmissionOut,
     SubmissionSubmitRequest,
     SubmissionUpsert,
@@ -156,3 +160,55 @@ def list_student_submissions(
         )
         out.append(_submission_out(submission, assignment))
     return out
+
+
+@router.post("/courses/{course_id}/resource-sections", response_model=ResourceSectionOut)
+def create_resource_section(
+    course_id: uuid.UUID,
+    payload: ResourceSectionCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> ResourceSection:
+    return learning_service.create_resource_section(
+        db, current, user.id, course_id, payload.name, request.state.request_id
+    )
+
+
+@router.get("/courses/{course_id}/resource-sections", response_model=CourseResourcesOut)
+def get_course_resources(
+    course_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> CourseResourcesOut:
+    data = learning_service.get_course_resources(db, current, user.id, course_id)
+    return CourseResourcesOut(**data)
+
+
+@router.patch("/resource-sections/{section_id}", response_model=ResourceSectionOut)
+def rename_resource_section(
+    section_id: uuid.UUID,
+    payload: ResourceSectionUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> ResourceSection:
+    return learning_service.rename_resource_section(
+        db, current, user.id, section_id, payload.name, request.state.request_id
+    )
+
+
+@router.delete("/resource-sections/{section_id}", response_model=ResourceSectionOut)
+def delete_resource_section(
+    section_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> ResourceSection:
+    return learning_service.delete_resource_section(
+        db, current, user.id, section_id, request.state.request_id
+    )

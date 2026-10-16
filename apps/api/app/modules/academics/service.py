@@ -9,6 +9,7 @@ cada tabla (ver nota en `db/base.py::SchoolScopedMixin` y `docs/IMPLEMENTATION_S
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from sqlalchemy.orm import Session
 
@@ -598,6 +599,80 @@ def list_course_students(
         raise NotFoundError("El curso indicado no existe en este colegio.")
     require_course_staff_access(db, current, user_id, course)
     return academics_repo.list_students_in_course(db, course_id)
+
+
+def list_enrollable_students(
+    db: Session, current: CurrentMembership, user_id: uuid.UUID, course_id: uuid.UUID
+) -> list[tuple]:
+    course = academics_repo.get_course(db, current.school_id, course_id)
+    if course is None:
+        raise NotFoundError("El curso indicado no existe en este colegio.")
+    require_course_staff_access(db, current, user_id, course)
+    return academics_repo.list_students_not_in_course(db, current.school_id, course_id)
+
+
+def enroll_student_in_course(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    course_id: uuid.UUID,
+    student_id: uuid.UUID,
+    request_id: str | None,
+) -> tuple:
+    """Inscribir desde el curso (sección 6/7) es un atajo del mismo flujo que
+    create_enrollment, con sección/año ya fijados por el curso: admin/coordinación
+    o el docente encargado pueden hacerlo, sin necesitar enrollment:manage. Si el
+    alumno ya tiene matrícula en la sección/año de este curso, la reutiliza en vez
+    de crear otra (igual criterio que create_enrollment con CourseEnrollment:
+    idempotente, nunca rompe por un alumno ya inscrito)."""
+    course = academics_repo.get_course(db, current.school_id, course_id)
+    if course is None:
+        raise NotFoundError("El curso indicado no existe en este colegio.")
+    require_course_staff_access(db, current, user_id, course)
+
+    if course.status == "archived":
+        raise UnprocessableError("Este curso está archivado; no admite nuevas matrículas.")
+    if not academics_repo.course_has_active_teacher(db, course_id):
+        raise UnprocessableError(
+            "Este curso no tiene un docente encargado asignado; asigna uno antes de matricular alumnos."
+        )
+
+    student = identity_repo.get_student_profile(db, student_id)
+    if student is None or student.school_id != current.school_id:
+        raise NotFoundError("El alumno indicado no existe en este colegio.")
+
+    if not academics_repo.is_student_enrolled_in_course(db, course_id, student_id):
+        enrollment = academics_repo.find_enrollment(
+            db, current.school_id, student_id, course.section_id, course.academic_year_id
+        )
+        if enrollment is None:
+            enrollment = Enrollment(
+                school_id=current.school_id,
+                academic_year_id=course.academic_year_id,
+                student_id=student_id,
+                section_id=course.section_id,
+                starts_on=date.today(),
+            )
+            db.add(enrollment)
+            db.flush()
+
+        db.add(
+            CourseEnrollment(
+                school_id=current.school_id,
+                course_id=course_id,
+                student_id=student_id,
+                enrollment_id=enrollment.id,
+            )
+        )
+        _record_audit(
+            db, current, action="course_enrollment.create", target_type="course",
+            target_id=str(course_id), request_id=request_id,
+        )
+        db.commit()
+        db.refresh(student)
+
+    display_name = identity_repo.get_user(db, student.user_id).display_name if student.user_id else None
+    return student, display_name
 
 
 def rename_course(

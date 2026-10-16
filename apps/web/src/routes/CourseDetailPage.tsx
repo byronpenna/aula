@@ -1,14 +1,21 @@
-import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useRef, useState, type ChangeEvent } from "react";
+import { useParams, useSearchParams, Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiClient } from "../lib/apiClient";
-import type { Assignment, Course, CourseStudent } from "../lib/types";
+import type { Assignment, Course, CourseResources, CourseStudent } from "../lib/types";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
+import { downloadFile } from "../lib/download";
 import { useAuth } from "../context/AuthContext";
+
+type TabKey = "tareas" | "recursos";
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "tareas", label: "Tareas" },
+  { key: "recursos", label: "Recursos" },
+];
 
 // max_score se mantiene como string en el formulario (los inputs HTML son texto) y
 // se convierte a número solo al enviar; evita el desajuste de tipos input/output de
@@ -30,6 +37,8 @@ export function CourseDetailPage() {
   const { courseId } = useParams<{ courseId: string }>();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = (searchParams.get("tab") as TabKey | null) ?? "tareas";
   const { activeSchoolId, me } = useAuth();
   const currentRoles = me?.memberships.find((m) => m.school_id === activeSchoolId)?.roles ?? [];
   // Crear/publicar tareas es exclusivo de quien administra el curso (sección 6); un
@@ -80,6 +89,31 @@ export function CourseDetailPage() {
       {courseId && <CourseNameHeader courseId={courseId} isStaff={isStaff} />}
       {isStaff && courseId && <CourseStudentsSection courseId={courseId} />}
 
+      <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200" role="tablist">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.key}
+            onClick={() => setSearchParams({ tab: t.key })}
+            className={`focus-ring rounded-t-md px-3 py-2 text-sm font-medium ${
+              tab === t.key
+                ? "border-b-2 border-brand-600 text-brand-900"
+                : "text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "recursos" && courseId && (
+        <CourseResourcesSection courseId={courseId} isStaff={isStaff} />
+      )}
+
+      {tab === "tareas" && (
+        <>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold">Tareas del curso</h1>
         {isStaff && (
@@ -205,6 +239,8 @@ export function CourseDetailPage() {
           ))}
         </ul>
       )}
+        </>
+      )}
     </div>
   );
 }
@@ -295,20 +331,103 @@ function CourseNameHeader({ courseId, isStaff }: { courseId: string; isStaff: bo
   );
 }
 
-// Alumnado matriculado en este curso puntual, solo lectura (no el listado general
-// de /students, que requiere enrollment:manage): GET /courses/:id/students ya solo
-// lo permite a admin/coordinación o al docente asignado a este curso (sección 6,
-// ver academics/service.py::require_course_staff_access). Editar el nombre de un
+// Alumnado matriculado en este curso puntual, solo lectura en el listado (no el
+// listado general de /students, que requiere enrollment:manage): GET
+// /courses/:id/students ya solo lo permite a admin/coordinación o al docente
+// asignado a este curso (sección 6, ver
+// academics/service.py::require_course_staff_access). Editar el nombre de un
 // alumno es un flujo aparte (users:manage, /admin/users), no desde aquí.
+// "Inscribir alumno" sí es de aquí: atajo de matrícula scopeado a este curso
+// (POST /courses/:id/students, academics_service.enroll_student_in_course) que no
+// exige enrollment:manage — a diferencia del formulario completo de
+// Administración > Academia > Inscripciones, que sigue siendo el único lugar
+// para elegir sección/año desde cero.
 function CourseStudentsSection({ courseId }: { courseId: string }) {
+  const queryClient = useQueryClient();
+  const [isEnrolling, setIsEnrolling] = useState(false);
+  const [selectedStudentId, setSelectedStudentId] = useState("");
+
   const { data, isLoading, error } = useQuery<CourseStudent[]>({
     queryKey: ["courses", courseId, "students"],
     queryFn: async () => (await apiClient.get(`/courses/${courseId}/students`)).data,
   });
 
+  const candidates = useQuery<CourseStudent[]>({
+    queryKey: ["courses", courseId, "enrollable-students"],
+    queryFn: async () => (await apiClient.get(`/courses/${courseId}/enrollable-students`)).data,
+    enabled: isEnrolling,
+  });
+
+  const enrollMutation = useMutation({
+    mutationFn: async (studentId: string) =>
+      (await apiClient.post(`/courses/${courseId}/students`, { student_id: studentId })).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["courses", courseId, "students"] });
+      queryClient.invalidateQueries({ queryKey: ["courses", courseId, "enrollable-students"] });
+      setSelectedStudentId("");
+      setIsEnrolling(false);
+    },
+  });
+
+  const candidateLabel = (student: CourseStudent) =>
+    student.display_name
+      ? `${student.display_name} (${student.student_number})`
+      : student.student_number;
+
   return (
     <section className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
-      <h2 className="mb-3 text-base font-semibold text-slate-900">Estudiantes inscritos</h2>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-base font-semibold text-slate-900">Estudiantes inscritos</h2>
+        <button
+          type="button"
+          className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+          onClick={() => setIsEnrolling((v) => !v)}
+        >
+          {isEnrolling ? "Cancelar" : "Inscribir alumno"}
+        </button>
+      </div>
+
+      {isEnrolling && (
+        <form
+          className="mb-3 flex flex-wrap items-center gap-2 rounded-md bg-slate-50 p-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (selectedStudentId) enrollMutation.mutate(selectedStudentId);
+          }}
+        >
+          {candidates.isLoading && <LoadingState label="Cargando alumnos…" />}
+          {candidates.error && <ErrorState error={candidates.error} />}
+          {candidates.data && candidates.data.length === 0 && (
+            <p className="text-sm text-slate-500">
+              No hay alumnos del colegio pendientes de inscribir en este curso.
+            </p>
+          )}
+          {candidates.data && candidates.data.length > 0 && (
+            <>
+              <select
+                value={selectedStudentId}
+                onChange={(e) => setSelectedStudentId(e.target.value)}
+                className="focus-ring flex-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+              >
+                <option value="">Selecciona un alumno…</option>
+                {candidates.data.map((student) => (
+                  <option key={student.id} value={student.id}>
+                    {candidateLabel(student)}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                disabled={!selectedStudentId || enrollMutation.isPending}
+                className="focus-ring rounded-md bg-brand-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+              >
+                Inscribir
+              </button>
+            </>
+          )}
+          {enrollMutation.isError && <ErrorState error={enrollMutation.error} />}
+        </form>
+      )}
 
       {isLoading && <LoadingState label="Cargando estudiantes…" />}
       {error && <ErrorState error={error} />}
@@ -331,5 +450,286 @@ function CourseStudentsSection({ courseId }: { courseId: string }) {
         </ul>
       )}
     </section>
+  );
+}
+
+// Recursos del curso (PDFs agrupados en secciones, sección nueva): verlos alcanza
+// con acceso de lectura al curso (alumno/tutor incluidos, de ahí que este
+// componente no esté detrás de `isStaff` como CourseStudentsSection); crear,
+// renombrar o eliminar secciones y subir PDFs sí es solo de quien administra el
+// curso (reforzado en el backend por
+// academics_service.require_course_staff_access). Eliminar una sección nunca
+// borra sus PDFs (sección 6): el backend los sigue devolviendo, agrupados en
+// `unsectioned_files` (ver learning_service.get_course_resources).
+function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isStaff: boolean }) {
+  const queryClient = useQueryClient();
+  const [isCreating, setIsCreating] = useState(false);
+  const [newSectionName, setNewSectionName] = useState("");
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+
+  const queryKey = ["courses", courseId, "resource-sections"];
+  const { data, isLoading, error } = useQuery<CourseResources>({
+    queryKey,
+    queryFn: async () => (await apiClient.get(`/courses/${courseId}/resource-sections`)).data,
+  });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey });
+
+  const createMutation = useMutation({
+    mutationFn: async (name: string) =>
+      (await apiClient.post(`/courses/${courseId}/resource-sections`, { name })).data,
+    onSuccess: () => {
+      invalidate();
+      setNewSectionName("");
+      setIsCreating(false);
+    },
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: async ({ sectionId, name }: { sectionId: string; name: string }) =>
+      (await apiClient.patch(`/resource-sections/${sectionId}`, { name })).data,
+    onSuccess: () => {
+      invalidate();
+      setEditingSectionId(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (sectionId: string) =>
+      (await apiClient.delete(`/resource-sections/${sectionId}`)).data,
+    onSuccess: invalidate,
+  });
+
+  if (isLoading) return <LoadingState label="Cargando recursos…" />;
+  if (error) return <ErrorState error={error} />;
+  if (!data) return null;
+
+  const hasNothing = data.sections.length === 0 && data.unsectioned_files.length === 0;
+
+  return (
+    <div>
+      {isStaff && (
+        <div className="mb-4">
+          {isCreating ? (
+            <form
+              className="flex flex-wrap items-center gap-2 rounded-md bg-slate-50 p-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (newSectionName.trim()) createMutation.mutate(newSectionName);
+              }}
+            >
+              <input
+                autoFocus
+                value={newSectionName}
+                onChange={(e) => setNewSectionName(e.target.value)}
+                placeholder="Nombre de la sección"
+                className="focus-ring flex-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+              />
+              <button
+                type="submit"
+                disabled={createMutation.isPending}
+                className="focus-ring rounded-md bg-brand-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+              >
+                Crear
+              </button>
+              <button
+                type="button"
+                className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+                onClick={() => setIsCreating(false)}
+              >
+                Cancelar
+              </button>
+            </form>
+          ) : (
+            <button
+              type="button"
+              className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+              onClick={() => setIsCreating(true)}
+            >
+              Nueva sección
+            </button>
+          )}
+          {createMutation.isError && <ErrorState error={createMutation.error} />}
+        </div>
+      )}
+
+      {hasNothing && (
+        <EmptyState
+          title="Sin recursos todavía"
+          description={
+            isStaff
+              ? "Crea una sección y sube los primeros PDFs para que los alumnos los vean."
+              : "El docente todavía no ha subido material para este curso."
+          }
+        />
+      )}
+
+      <div className="space-y-4">
+        {data.sections.map((section) => (
+          <section key={section.id} className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              {editingSectionId === section.id ? (
+                <form
+                  className="flex flex-1 items-center gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (editName.trim()) {
+                      renameMutation.mutate({ sectionId: section.id, name: editName });
+                    }
+                  }}
+                >
+                  <input
+                    autoFocus
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="focus-ring flex-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+                  />
+                  <button
+                    type="submit"
+                    disabled={renameMutation.isPending}
+                    className="focus-ring rounded-md bg-brand-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+                  >
+                    Guardar
+                  </button>
+                  <button
+                    type="button"
+                    className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+                    onClick={() => setEditingSectionId(null)}
+                  >
+                    Cancelar
+                  </button>
+                </form>
+              ) : (
+                <>
+                  <h3 className="font-medium text-slate-900">{section.name}</h3>
+                  {isStaff && (
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        type="button"
+                        className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+                        onClick={() => {
+                          setEditName(section.name);
+                          setEditingSectionId(section.id);
+                        }}
+                      >
+                        Renombrar
+                      </button>
+                      <button
+                        type="button"
+                        className="focus-ring rounded-md border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50"
+                        onClick={() => {
+                          if (
+                            confirm(
+                              `¿Eliminar la sección "${section.name}"? Los PDFs no se borran, quedan sin sección.`,
+                            )
+                          ) {
+                            deleteMutation.mutate(section.id);
+                          }
+                        }}
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {section.files.length === 0 ? (
+              <p className="text-sm text-slate-500">Sin archivos todavía.</p>
+            ) : (
+              <ul className="space-y-1">
+                {section.files.map((file) => (
+                  <li key={file.id} className="flex items-center justify-between gap-2 text-sm">
+                    <button
+                      type="button"
+                      onClick={() => downloadFile(file.id)}
+                      className="focus-ring truncate rounded text-brand-700 underline hover:text-brand-900"
+                    >
+                      {file.filename}
+                    </button>
+                    <span className="shrink-0 text-xs text-slate-400">
+                      {(file.size_bytes / 1024).toFixed(0)} KB
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {isStaff && <ResourceUploadInput sectionId={section.id} onUploaded={invalidate} />}
+          </section>
+        ))}
+
+        {data.unsectioned_files.length > 0 && (
+          <section className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
+            <h3 className="mb-2 font-medium text-slate-700">Sin sección</h3>
+            <p className="mb-2 text-xs text-slate-500">
+              PDFs cuya sección fue eliminada; siguen disponibles aquí.
+            </p>
+            <ul className="space-y-1">
+              {data.unsectioned_files.map((file) => (
+                <li key={file.id} className="flex items-center justify-between gap-2 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => downloadFile(file.id)}
+                    className="focus-ring truncate rounded text-brand-700 underline hover:text-brand-900"
+                  >
+                    {file.filename}
+                  </button>
+                  <span className="shrink-0 text-xs text-slate-400">
+                    {(file.size_bytes / 1024).toFixed(0)} KB
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
+      {deleteMutation.isError && <ErrorState error={deleteMutation.error} />}
+    </div>
+  );
+}
+
+// Input de subida de PDFs de una sección de recursos; separado para no repetir el
+// manejo de FormData/invalidación por cada sección renderizada.
+function ResourceUploadInput({
+  sectionId,
+  onUploaded,
+}: {
+  sectionId: string;
+  onUploaded: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const uploadMutation = useMutation({
+    mutationFn: async (file: globalThis.File) => {
+      const formData = new FormData();
+      formData.append("upload", file);
+      return (await apiClient.post(`/resource-sections/${sectionId}/files`, formData)).data;
+    },
+    onSuccess: () => {
+      if (inputRef.current) inputRef.current.value = "";
+      onUploaded();
+    },
+  });
+
+  function onFileSelected(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) uploadMutation.mutate(file);
+  }
+
+  return (
+    <div className="mt-2 border-t border-slate-100 pt-2">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="application/pdf"
+        onChange={onFileSelected}
+        disabled={uploadMutation.isPending}
+        className="text-sm"
+      />
+      {uploadMutation.isPending && <p className="text-xs text-slate-500">Subiendo…</p>}
+      {uploadMutation.isError && <ErrorState error={uploadMutation.error} />}
+    </div>
   );
 }

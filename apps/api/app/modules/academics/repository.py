@@ -234,3 +234,40 @@ def list_enrollments_for_student(
         Enrollment.school_id == school_id, Enrollment.student_id == student_id
     )
     return list(db.execute(stmt).scalars().all())
+
+
+def list_students_not_in_course(
+    db: Session, school_id: uuid.UUID, course_id: uuid.UUID
+) -> list[tuple[StudentProfile, str | None]]:
+    """Candidatos para "Inscribir alumno" desde el curso (sección 6): todo el
+    alumnado del colegio que todavía no tiene una CourseEnrollment activa en este
+    curso puntual, con el mismo shape que list_students_in_course."""
+    already_enrolled = select(CourseEnrollment.student_id).where(
+        CourseEnrollment.course_id == course_id, CourseEnrollment.status == "active"
+    )
+    stmt = (
+        select(StudentProfile, User.display_name)
+        .outerjoin(User, User.id == StudentProfile.user_id)
+        .where(StudentProfile.school_id == school_id, StudentProfile.id.not_in(already_enrolled))
+        .order_by(StudentProfile.student_number)
+    )
+    return [(row[0], row[1]) for row in db.execute(stmt).all()]
+
+
+def find_enrollment(
+    db: Session,
+    school_id: uuid.UUID,
+    student_id: uuid.UUID,
+    section_id: uuid.UUID,
+    academic_year_id: uuid.UUID,
+) -> Enrollment | None:
+    """Reutilizada por enroll_student_in_course (sección 7): si el alumno ya tiene
+    una matrícula en la sección/año del curso, se cuelga la CourseEnrollment nueva
+    de esa en vez de crear una Enrollment duplicada."""
+    stmt = select(Enrollment).where(
+        Enrollment.school_id == school_id,
+        Enrollment.student_id == student_id,
+        Enrollment.section_id == section_id,
+        Enrollment.academic_year_id == academic_year_id,
+    )
+    return db.execute(stmt).scalars().first()

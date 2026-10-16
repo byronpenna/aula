@@ -80,6 +80,24 @@ def list_submission_files(
     return files_service.list_submission_files(db, current, user.id, submission_id)
 
 
+@router.post("/resource-sections/{section_id}/files", response_model=FileOut)
+async def upload_resource_file(
+    section_id: uuid.UUID,
+    upload: UploadFile = FastAPIFile(...),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(get_current_membership),
+):
+    content = await upload.read()
+    return files_service.upload_resource_file(
+        db, settings, current, user.id, section_id,
+        upload.filename or "archivo",
+        upload.content_type or "application/octet-stream",
+        content,
+    )
+
+
 @router.get("/files/{file_id}/download", response_model=FileDownloadOut)
 def download_file(
     file_id: uuid.UUID,

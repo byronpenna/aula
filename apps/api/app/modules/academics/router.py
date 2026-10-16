@@ -25,6 +25,7 @@ from app.modules.academics.schemas import (
     AcademicYearOut,
     AcademicYearUpdate,
     CourseCreate,
+    CourseEnrollStudent,
     CourseOut,
     CourseRename,
     CourseStudentOut,
@@ -359,6 +360,40 @@ def rename_course(
         db, current, user.id, course_id, payload.name, request.state.request_id
     )
     return _course_out(db, course)
+
+
+@router.get("/courses/{course_id}/enrollable-students", response_model=list[CourseStudentOut])
+def list_enrollable_students(
+    course_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> list[CourseStudentOut]:
+    """Candidatos para el selector de "Inscribir alumno" (sección 6): alumnado del
+    colegio que todavía no está en este curso."""
+    rows = academics_service.list_enrollable_students(db, current, user.id, course_id)
+    return [
+        CourseStudentOut(id=profile.id, student_number=profile.student_number, display_name=name)
+        for profile, name in rows
+    ]
+
+
+@router.post("/courses/{course_id}/students", response_model=CourseStudentOut)
+def enroll_course_student(
+    course_id: uuid.UUID,
+    payload: CourseEnrollStudent,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> CourseStudentOut:
+    """Atajo de matrícula scopeado a este curso (sección 6/7): admin/coordinación o
+    el docente encargado, sin necesitar enrollment:manage — ver
+    academics_service.enroll_student_in_course."""
+    profile, name = academics_service.enroll_student_in_course(
+        db, current, user.id, course_id, payload.student_id, request.state.request_id
+    )
+    return CourseStudentOut(id=profile.id, student_number=profile.student_number, display_name=name)
 
 
 @router.post("/courses/{course_id}/teachers", response_model=CourseTeacherOut)
