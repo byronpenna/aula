@@ -15,6 +15,7 @@ from app.modules.academics.models import (
     Section,
     Subject,
 )
+from app.modules.identity.models import StudentProfile, User
 
 
 def list_academic_years(db: Session, school_id: uuid.UUID) -> list[AcademicYear]:
@@ -208,6 +209,22 @@ def is_student_enrolled_in_course(db: Session, course_id: uuid.UUID, student_id:
         CourseEnrollment.status == "active",
     )
     return db.execute(stmt).scalar_one_or_none() is not None
+
+
+def list_students_in_course(
+    db: Session, course_id: uuid.UUID
+) -> list[tuple[StudentProfile, str | None]]:
+    """Alumnado matriculado activamente en un curso puntual, con el `display_name`
+    del `User` vinculado (puede ser `None`: igual que en identity_repo.list_student_profiles,
+    un alumno puede existir sin cuenta todavía)."""
+    stmt = (
+        select(StudentProfile, User.display_name)
+        .join(CourseEnrollment, CourseEnrollment.student_id == StudentProfile.id)
+        .outerjoin(User, User.id == StudentProfile.user_id)
+        .where(CourseEnrollment.course_id == course_id, CourseEnrollment.status == "active")
+        .order_by(StudentProfile.student_number)
+    )
+    return [(row[0], row[1]) for row in db.execute(stmt).all()]
 
 
 def list_enrollments_for_student(

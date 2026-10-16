@@ -1,12 +1,15 @@
 // FileAttachments.tsx: mismo componente para material de la tarea, entrega propia
 // y entregas vistas por docente/tutor — cada caller decide si puede subir
 // (uploadUrl) o es solo lectura. Se prueba contra el almacenamiento real
-// (apps/api/local_storage en dev local), no un mock.
+// (apps/api/local_storage en dev local), no un mock. Los cursos pueden tener un
+// nombre libre (ver CourseNameHeader), así que el link se ubica por href.
+const courseLinkSelector = 'a[href^="/courses/"]';
+
 describe("Archivos adjuntos", () => {
   it("el docente sube material a la tarea y queda listado", () => {
     cy.loginAs("teacher");
     cy.visit("/courses");
-    cy.contains("a", "Curso ").click();
+    cy.get(courseLinkSelector).first().click();
     cy.contains("a", "Tarea de práctica: fracciones").click();
 
     cy.contains("h2", "Material adjunto")
@@ -23,7 +26,7 @@ describe("Archivos adjuntos", () => {
   it("el alumno ve el material pero no puede subir material de la tarea (solo su propia entrega)", () => {
     cy.loginAs("student");
     cy.visit("/courses");
-    cy.contains("a", "Curso ").click();
+    cy.get(courseLinkSelector).first().click();
     cy.contains("a", "Tarea de práctica: fracciones").click();
 
     cy.contains("h2", "Material adjunto").parent().find('input[type="file"]').should("not.exist");

@@ -13,7 +13,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from app.core.deps import CurrentMembership
-from app.core.errors import ConflictError, NotFoundError, UnprocessableError
+from app.core.errors import ConflictError, ForbiddenError, NotFoundError, UnprocessableError
 from app.modules.academics import repository as academics_repo
 from app.modules.academics.models import (
     AcademicYear,
@@ -570,6 +570,65 @@ def require_course_access(
             ):
                 return
     raise NotFoundError("El curso indicado no existe o no tienes acceso.")
+
+
+def require_course_staff_access(
+    db: Session, current: CurrentMembership, user_id: uuid.UUID, course: Course
+) -> None:
+    """Ver el alumnado de un curso y editar el nombre de un alumno es una acción de
+    quien administra ese curso puntual (sección 6), no de lectura general: admin/
+    coordinación en todo el colegio, o el docente asignado a este curso — nunca
+    alumno ni tutor, aunque tengan `course:read` sobre el mismo curso."""
+    if course.school_id != current.school_id:
+        raise NotFoundError("El curso indicado no existe en este colegio.")
+    if {"school_admin", "coordinator"} & current.role_codes:
+        return
+    if "teacher" in current.role_codes and academics_repo.is_teacher_of_course(
+        db, course.id, user_id
+    ):
+        return
+    raise ForbiddenError("Solo quien administra el curso puede ver esta información.")
+
+
+def list_course_students(
+    db: Session, current: CurrentMembership, user_id: uuid.UUID, course_id: uuid.UUID
+) -> list[tuple]:
+    course = academics_repo.get_course(db, current.school_id, course_id)
+    if course is None:
+        raise NotFoundError("El curso indicado no existe en este colegio.")
+    require_course_staff_access(db, current, user_id, course)
+    return academics_repo.list_students_in_course(db, course_id)
+
+
+def rename_course(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    course_id: uuid.UUID,
+    name: str,
+    request_id: str | None,
+) -> Course:
+    """Ponerle nombre a un curso es la misma acción de quien lo administra que ver
+    su alumnado (sección 6): admin/coordinación, o el docente asignado a este curso
+    puntual — nunca el PATCH genérico de /courses/{id} (academics:manage), que
+    también mueve sección/materia/año y no debe quedar en manos de un docente."""
+    course = academics_repo.get_course(db, current.school_id, course_id)
+    if course is None:
+        raise NotFoundError("El curso indicado no existe en este colegio.")
+    require_course_staff_access(db, current, user_id, course)
+
+    clean_name = " ".join(name.strip().split())
+    if not clean_name:
+        raise UnprocessableError("El nombre no puede estar vacío.")
+
+    course.name = clean_name
+    _record_audit(
+        db, current, action="course.rename", target_type="course",
+        target_id=str(course.id), request_id=request_id,
+    )
+    db.commit()
+    db.refresh(course)
+    return course
 
 
 def require_student_access(

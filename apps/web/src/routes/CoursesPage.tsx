@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { apiClient } from "../lib/apiClient";
 import type { Course } from "../lib/types";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
+import { StatusBadge } from "../components/StatusBadge";
 
 export function CoursesPage() {
   const { data, isLoading, error } = useQuery<Course[]>({
@@ -23,16 +24,21 @@ export function CoursesPage() {
 
   return (
     <div>
-      <h1 className="mb-4 text-lg font-semibold">Cursos</h1>
+      <h1 className="mb-4 font-display text-xl font-semibold text-brand-900">Cursos</h1>
       <ul className="grid gap-3 sm:grid-cols-2">
         {data.map((course) => (
           <li key={course.id}>
             <Link
               to={`/courses/${course.id}`}
-              className="focus-ring block rounded-lg border border-slate-200 bg-white p-4 hover:border-brand-400"
+              className="focus-ring block rounded-2xl border border-brand-100 bg-white p-4 shadow-sm transition hover:border-brand-400 hover:shadow-md"
             >
-              <p className="font-medium text-slate-900">Curso {course.id.slice(0, 8)}</p>
-              <p className="text-sm text-slate-500">Estado: {course.status}</p>
+              <div className="flex items-start justify-between gap-3">
+                <p className="font-display font-medium text-brand-900">
+                  {course.name ?? `Curso ${course.id.slice(0, 8)}`}
+                </p>
+                <StatusBadge status={course.status} />
+              </div>
+              <p className="mt-1 text-sm text-brand-500">Ver detalle del curso</p>
             </Link>
           </li>
         ))}

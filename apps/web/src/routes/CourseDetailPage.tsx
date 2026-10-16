@@ -5,8 +5,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiClient } from "../lib/apiClient";
-import type { Assignment } from "../lib/types";
+import type { Assignment, Course, CourseStudent } from "../lib/types";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
+import { StatusBadge } from "../components/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 
 // max_score se mantiene como string en el formulario (los inputs HTML son texto) y
@@ -76,6 +77,9 @@ export function CourseDetailPage() {
 
   return (
     <div>
+      {courseId && <CourseNameHeader courseId={courseId} isStaff={isStaff} />}
+      {isStaff && courseId && <CourseStudentsSection courseId={courseId} />}
+
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold">Tareas del curso</h1>
         {isStaff && (
@@ -202,5 +206,130 @@ export function CourseDetailPage() {
         </ul>
       )}
     </div>
+  );
+}
+
+// Nombre del curso: admin/coordinación o el docente asignado a este curso puntual
+// pueden ponerlo/corregirlo (PATCH /courses/:id/name, sección 6, ver
+// academics/service.py::require_course_staff_access) — nunca el PATCH genérico del
+// curso, que también mueve sección/materia/año y es solo de academics:manage.
+function CourseNameHeader({ courseId, isStaff }: { courseId: string; isStaff: boolean }) {
+  const queryClient = useQueryClient();
+  const [isEditing, setIsEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+
+  const { data: course, isLoading, error } = useQuery<Course>({
+    queryKey: ["courses", courseId],
+    queryFn: async () => (await apiClient.get(`/courses/${courseId}`)).data,
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: async (name: string) =>
+      (await apiClient.patch(`/courses/${courseId}/name`, { name })).data,
+    onSuccess: (updated: Course) => {
+      queryClient.setQueryData(["courses", courseId], updated);
+      queryClient.invalidateQueries({ queryKey: ["courses"] });
+      setIsEditing(false);
+    },
+  });
+
+  if (isLoading) return <LoadingState label="Cargando curso…" />;
+  if (error) return <ErrorState error={error} />;
+  if (!course) return null;
+
+  const label = course.name ?? `Curso ${course.id.slice(0, 8)}`;
+
+  return (
+    <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+      {isEditing ? (
+        <form
+          className="flex flex-wrap items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (nameDraft.trim()) renameMutation.mutate(nameDraft);
+          }}
+        >
+          <input
+            autoFocus
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            className="focus-ring flex-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+          />
+          <button
+            type="submit"
+            disabled={renameMutation.isPending}
+            className="focus-ring rounded-md bg-brand-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+          >
+            Guardar
+          </button>
+          <button
+            type="button"
+            className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+            onClick={() => setIsEditing(false)}
+          >
+            Cancelar
+          </button>
+        </form>
+      ) : (
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-semibold text-slate-900">{label}</h1>
+            <StatusBadge status={course.status} />
+          </div>
+          {isStaff && (
+            <button
+              type="button"
+              className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+              onClick={() => {
+                setNameDraft(course.name ?? "");
+                setIsEditing(true);
+              }}
+            >
+              Cambiar nombre
+            </button>
+          )}
+        </div>
+      )}
+      {renameMutation.isError && <ErrorState error={renameMutation.error} />}
+    </div>
+  );
+}
+
+// Alumnado matriculado en este curso puntual, solo lectura (no el listado general
+// de /students, que requiere enrollment:manage): GET /courses/:id/students ya solo
+// lo permite a admin/coordinación o al docente asignado a este curso (sección 6,
+// ver academics/service.py::require_course_staff_access). Editar el nombre de un
+// alumno es un flujo aparte (users:manage, /admin/users), no desde aquí.
+function CourseStudentsSection({ courseId }: { courseId: string }) {
+  const { data, isLoading, error } = useQuery<CourseStudent[]>({
+    queryKey: ["courses", courseId, "students"],
+    queryFn: async () => (await apiClient.get(`/courses/${courseId}/students`)).data,
+  });
+
+  return (
+    <section className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
+      <h2 className="mb-3 text-base font-semibold text-slate-900">Estudiantes inscritos</h2>
+
+      {isLoading && <LoadingState label="Cargando estudiantes…" />}
+      {error && <ErrorState error={error} />}
+      {data && data.length === 0 && (
+        <EmptyState
+          title="Sin estudiantes matriculados"
+          description="Todavía no hay alumnos inscritos en este curso."
+        />
+      )}
+      {data && data.length > 0 && (
+        <ul className="divide-y divide-slate-100">
+          {data.map((student) => (
+            <li key={student.id} className="py-2">
+              <p className="font-medium text-slate-900">
+                {student.display_name ?? "Sin nombre registrado"}
+              </p>
+              <p className="text-sm text-slate-500">Matrícula {student.student_number}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

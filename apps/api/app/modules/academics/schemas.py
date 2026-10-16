@@ -109,10 +109,15 @@ class CourseOut(BaseModel):
     starts_on: date
     ends_on: date
     status: str
+    name: str | None = None
     # Calculado en el router (sección 6): antes de matricular alumnos en un curso debe
     # existir al menos un docente activo asignado; el frontend usa esto para bloquear
     # la matrícula sin necesidad de una llamada aparte por curso.
     teacher_user_ids: list[uuid.UUID] = []
+
+
+class CourseRename(BaseModel):
+    name: str
 
 
 class CourseTeacherCreate(BaseModel):
@@ -152,3 +157,9 @@ class CourseEnrollmentOut(BaseModel):
     course_id: uuid.UUID
     student_id: uuid.UUID
     status: str
+
+
+class CourseStudentOut(BaseModel):
+    id: uuid.UUID
+    student_number: str
+    display_name: str | None

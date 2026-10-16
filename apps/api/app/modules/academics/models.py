@@ -93,6 +93,12 @@ class Course(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
     # academics_repo.get_course), solo desaparece de los listados de navegación
     # (academics_repo.list_*) y ya no admite nuevas matrículas.
     status: Mapped[str] = mapped_column(nullable=False, default="active")
+    # Nullable: la mayoría de cursos no tienen nombre propio todavía (el frontend
+    # cae a "Curso {id[:8]}" cuando es None). Se edita aparte con PATCH
+    # /courses/{id}/name (academics_service.rename_course), no con el PATCH
+    # genérico del curso, para que el docente encargado también pueda ponerlo sin
+    # darle permiso de mover el curso de sección/materia/año (academics:manage).
+    name: Mapped[str | None] = mapped_column(nullable=True)
 
 
 class CourseTeacher(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):

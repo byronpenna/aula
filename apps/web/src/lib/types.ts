@@ -84,6 +84,7 @@ export interface Course {
   starts_on: string;
   ends_on: string;
   status: string;
+  name: string | null;
   teacher_user_ids: string[];
 }
 
@@ -122,6 +123,12 @@ export interface Section {
   grade_level_id: string;
   name: string;
   status: string;
+}
+
+export interface CourseStudent {
+  id: string;
+  student_number: string;
+  display_name: string | null;
 }
 
 export interface CourseTeacher {

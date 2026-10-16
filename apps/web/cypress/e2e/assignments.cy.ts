@@ -2,14 +2,17 @@
 // borrador, la publica; el alumno la entrega (SUBMISSION_CREATE, control de
 // versión optimista); el docente revisa la lista de entregas. Un solo `it` porque
 // cada paso depende del id real que crea el paso anterior (capturado vía
-// `cy.intercept`, no hardcodeado).
+// `cy.intercept`, no hardcodeado). Los cursos pueden tener un nombre libre (ver
+// CourseNameHeader), así que el link se ubica por href, no por el texto "Curso ".
+const courseLinkSelector = 'a[href^="/courses/"]';
+
 describe("Tareas: crear, publicar, entregar y revisar", () => {
   it("docente crea y publica una tarea; alumno la entrega; docente ve la entrega", () => {
     const title = `Tarea E2E ${Date.now()}`;
 
     cy.loginAs("teacher");
     cy.visit("/courses");
-    cy.contains("a", "Curso ").click();
+    cy.get(courseLinkSelector).first().click();
 
     cy.contains("button", "Nueva tarea").click();
     cy.get('[name="title"]').type(title);
@@ -52,14 +55,14 @@ describe("Tareas: crear, publicar, entregar y revisar", () => {
   it("un docente no puede entregar y un alumno no ve la lista de entregas de otros", () => {
     cy.loginAs("teacher");
     cy.visit("/courses");
-    cy.contains("a", "Curso ").click();
+    cy.get(courseLinkSelector).first().click();
     cy.contains("a", "Tarea de práctica: fracciones").click();
     cy.get("#submission-body").should("not.exist");
     cy.contains("h2", "Entregas de alumnos").should("be.visible");
 
     cy.loginAs("student");
     cy.visit("/courses");
-    cy.contains("a", "Curso ").click();
+    cy.get(courseLinkSelector).first().click();
     cy.contains("a", "Tarea de práctica: fracciones").click();
     cy.contains("h2", "Entregas de alumnos").should("not.exist");
     cy.contains("label", "Mi entrega").should("be.visible");

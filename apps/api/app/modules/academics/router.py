@@ -26,6 +26,8 @@ from app.modules.academics.schemas import (
     AcademicYearUpdate,
     CourseCreate,
     CourseOut,
+    CourseRename,
+    CourseStudentOut,
     CourseTeacherCreate,
     CourseTeacherOut,
     CourseUpdate,
@@ -324,6 +326,38 @@ def get_course(
     if course is None:
         raise NotFoundError("El curso indicado no existe en este colegio.")
     academics_service.require_course_access(db, current, user.id, course)
+    return _course_out(db, course)
+
+
+@router.get("/courses/{course_id}/students", response_model=list[CourseStudentOut])
+def list_course_students(
+    course_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> list[CourseStudentOut]:
+    """Solo lectura (sección 6): quien administra el curso ve quién está
+    matriculado, nunca edita el nombre del alumno desde aquí — eso es
+    users:manage, un flujo aparte en /admin/users."""
+    rows = academics_service.list_course_students(db, current, user.id, course_id)
+    return [
+        CourseStudentOut(id=profile.id, student_number=profile.student_number, display_name=name)
+        for profile, name in rows
+    ]
+
+
+@router.patch("/courses/{course_id}/name", response_model=CourseOut)
+def rename_course(
+    course_id: uuid.UUID,
+    payload: CourseRename,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> CourseOut:
+    course = academics_service.rename_course(
+        db, current, user.id, course_id, payload.name, request.state.request_id
+    )
     return _course_out(db, course)
 
 
