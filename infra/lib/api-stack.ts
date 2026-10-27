@@ -73,6 +73,13 @@ export interface ApiStackProps extends cdk.StackProps {
    * dirección (o su dominio) en SES; de lo contrario el envío fallará en
    * runtime con un error de SES, no en el deploy. */
   sesFromEmail?: string;
+  /** Llave pública de Wompi (módulo "libros"): no es secreta (va al navegador
+   * en el checkout), por eso es una variable de entorno simple, igual que
+   * COGNITO_CLIENT_ID. Sin definir (el caso hoy, sin credenciales todavía),
+   * el Lambda arranca con WOMPI_PUBLIC_KEY vacío y la compra en línea queda
+   * deshabilitada (books/service.py::start_wompi_purchase) — la colecturía
+   * manual sigue funcionando igual. */
+  wompiPublicKey?: string;
 }
 
 /**
@@ -100,6 +107,20 @@ export class ApiStack extends cdk.Stack {
       removalPolicy:
         props.environmentName === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
       lifecycleRules: [{ abortIncompleteMultipartUploadAfter: cdk.Duration.days(1) }],
+    });
+
+    // Llaves sensibles de Wompi (módulo "libros"): secreto propio en vez de un
+    // valor hardcodeado, mismo criterio que el secreto de DB (sección 4) —
+    // aunque hoy no haya credenciales reales, así el valor se actualiza en
+    // Secrets Manager sin redeploy cuando lleguen. Placeholder vacío: con un
+    // JSON "{}" los tres campos quedan en None en Settings (ver
+    // core/config.py::_resolve_wompi_secrets) y la compra online queda
+    // deshabilitada hasta reemplazarlo manualmente (aws secretsmanager
+    // put-secret-value) con `private_key`/`integrity_secret`/`events_key`.
+    const wompiSecret = new secretsmanager.Secret(this, "WompiSecret", {
+      secretName: `aula/${props.environmentName}/wompi`,
+      description: "Credenciales de Wompi (libros): private_key, integrity_secret, events_key.",
+      secretStringValue: cdk.SecretValue.unsafePlainText("{}"),
     });
 
     const apiLogGroup = new logs.LogGroup(this, "ApiLogGroup", {
@@ -145,11 +166,14 @@ export class ApiStack extends cdk.Stack {
         // de invitaciones deshabilitado" y create_user no intenta enviar nada.
         MAIL_FROM_ADDRESS: props.sesFromEmail ?? "",
         APP_BASE_URL: allowedOrigins[0],
+        WOMPI_PUBLIC_KEY: props.wompiPublicKey ?? "",
+        WOMPI_SECRET_ARN: wompiSecret.secretArn,
       },
     });
 
     props.dbSecret.grantRead(this.apiFunction);
     filesBucket.grantReadWrite(this.apiFunction);
+    wompiSecret.grantRead(this.apiFunction);
     // Alta administrada de usuarios (Fase 3): el único permiso Admin* que necesita
     // el backend hoy es crear la cuenta con una contraseña temporal ya definida en
     // el propio formulario (AdminCreateUser la acepta directamente, sin necesitar
@@ -259,6 +283,17 @@ export class ApiStack extends cdk.Stack {
     httpApi.addRoutes({
       path: "/public/{proxy+}",
       methods: [apigwv2.HttpMethod.GET],
+      integration,
+    });
+
+    // Webhook de Wompi (módulo "libros") sin autorizador, mismo criterio que
+    // /public/{proxy+}: lo llama el servidor de Wompi, no un usuario con token
+    // de Cognito. La verificación real de que el request viene de Wompi es la
+    // firma HMAC del cuerpo (books/service.py::handle_wompi_webhook), no la
+    // red — API Gateway no puede exigir mTLS aquí sin más infra.
+    httpApi.addRoutes({
+      path: "/webhooks/{proxy+}",
+      methods: [apigwv2.HttpMethod.POST],
       integration,
     });
 

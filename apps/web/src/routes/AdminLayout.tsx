@@ -39,6 +39,11 @@ const NAV_SECTIONS: NavSection[] = [
       { to: "/admin/accounting", label: "Contabilidad", end: false },
     ],
   },
+  {
+    title: "Libros",
+    requiresPermission: "books:manage",
+    items: [{ to: "/admin/books", label: "Catálogo y compras", end: false }],
+  },
 ];
 
 export function AdminLayout() {

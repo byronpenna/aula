@@ -44,6 +44,12 @@ export function AppShell() {
               <Link className="focus-ring rounded px-1" to="/courses">
                 Cursos
               </Link>
+              <Link className="focus-ring rounded px-1" to="/books">
+                Libros
+              </Link>
+              <Link className="focus-ring rounded px-1" to="/mis-libros">
+                Mi biblioteca
+              </Link>
               {roles.includes("guardian") && (
                 <Link className="focus-ring rounded px-1" to="/my-students">
                   Mis hijos

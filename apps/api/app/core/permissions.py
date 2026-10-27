@@ -35,6 +35,13 @@ PUBLIC_SITE_MANAGE = "public_site:manage"
 ROLES_MANAGE = "roles:manage"
 AUDIT_READ = "audit:read"
 
+# Catálogo de libros digitales (módulo nuevo, independiente de cursos): BOOKS_READ
+# es solo para ver el catálogo/precio y la propia biblioteca (comprar no requiere
+# permiso especial, cualquiera con BOOKS_READ puede iniciar una compra); BOOKS_MANAGE
+# es crear/editar libros, subir el archivo y registrar compras por colecturía.
+BOOKS_MANAGE = "books:manage"
+BOOKS_READ = "books:read"
+
 ALL_PERMISSIONS: dict[str, str] = {
     USERS_MANAGE: "Invitar, desactivar y administrar usuarios del colegio",
     ROLES_MANAGE: "Ver y editar roles y su matriz de permisos",
@@ -51,6 +58,8 @@ ALL_PERMISSIONS: dict[str, str] = {
     ENROLLMENT_MANAGE: "Matricular alumnos en secciones y cursos",
     GUARDIAN_LINK_MANAGE: "Administrar vínculos entre tutores y alumnos",
     PUBLIC_SITE_MANAGE: "Administrar el contenido del sitio público (noticias y otros)",
+    BOOKS_MANAGE: "Administrar el catálogo de libros y registrar compras por colecturía",
+    BOOKS_READ: "Consultar el catálogo de libros y la propia biblioteca",
 }
 
 # Rol -> permisos por defecto, usado solo por el seed para poblar role_permissions.
@@ -63,6 +72,7 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         REPORT_READ,
         ENROLLMENT_MANAGE,
         GUARDIAN_LINK_MANAGE,
+        BOOKS_READ,
     ],
     "teacher": [
         COURSE_READ,
@@ -70,8 +80,9 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
         SUBMISSION_GRADE,
         ATTENDANCE_MANAGE,
         GRADE_PUBLISH,
+        BOOKS_READ,
     ],
-    "student": [COURSE_READ, SUBMISSION_CREATE],
-    "guardian": [COURSE_READ, REPORT_READ],
-    "finance": [BILLING_MANAGE],
+    "student": [COURSE_READ, SUBMISSION_CREATE, BOOKS_READ],
+    "guardian": [COURSE_READ, REPORT_READ, BOOKS_READ],
+    "finance": [BILLING_MANAGE, BOOKS_MANAGE, BOOKS_READ],
 }

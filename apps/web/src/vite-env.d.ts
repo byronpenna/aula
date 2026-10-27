@@ -9,6 +9,9 @@ interface ImportMetaEnv {
   readonly VITE_COGNITO_CLIENT_ID?: string;
   /** Dominio Hosted UI, para el endpoint /logout (no cubierto por discovery). */
   readonly VITE_COGNITO_DOMAIN?: string;
+  /** Llave pública de Wompi (módulo "libros"); sin definir, el checkout en línea
+   * se muestra deshabilitado (ver routes/BookDetailPage.tsx). */
+  readonly VITE_WOMPI_PUBLIC_KEY?: string;
 }
 
 interface ImportMeta {

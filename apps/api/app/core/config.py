@@ -62,6 +62,21 @@ class Settings(BaseSettings):
     local_jwt_ttl_seconds: int = 3600
 
     files_bucket: str = "aula-files-local"
+
+    # Wompi (pasarela de pago, módulo "libros"): sin credenciales todavía, por eso
+    # todo queda `None`/apagado por defecto. Con estos campos vacíos,
+    # books/service.py::start_wompi_purchase rechaza la compra online con un
+    # mensaje claro, pero la colecturía manual funciona igual sin ellos.
+    wompi_public_key: str | None = None
+    wompi_private_key: str | None = None
+    wompi_integrity_secret: str | None = None
+    wompi_events_key: str | None = None
+    wompi_base_url: str = "https://sandbox.wompi.co/v1"
+    wompi_checkout_base_url: str = "https://checkout.wompi.co/p/"
+    # En cloud, igual que DB_SECRET_ARN: infra/lib/api-stack.ts crea un secreto
+    # (hoy con valores vacíos/placeholder) y pasa su ARN; `get_settings()` lo
+    # resuelve una sola vez por contenedor frío (`_resolve_wompi_secrets`).
+    wompi_secret_arn: str | None = None
     # :5173 es apps/web (Vite) en dev; :3000 es apps/public_web (Next.js) en dev,
     # cuyo área admin llama a esta API (sección 7).
     allowed_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
@@ -107,9 +122,35 @@ def _resolve_cloud_database_url(settings: Settings) -> Settings:
     return settings.model_copy(update={"database_url": url})
 
 
+def _resolve_wompi_secrets(settings: Settings) -> Settings:
+    """Resuelve las llaves sensibles de Wompi desde Secrets Manager (sección
+    nueva, libros), igual patrón que `_resolve_cloud_database_url`. Con el
+    secreto todavía en placeholder (sin credenciales reales), esto deja los tres
+    campos en `None` y `books/service.py::start_wompi_purchase` rechaza la
+    compra online con un mensaje claro — la colecturía manual no depende de
+    esto."""
+    import json
+
+    import boto3
+
+    client = boto3.client("secretsmanager")
+    secret = json.loads(
+        client.get_secret_value(SecretId=settings.wompi_secret_arn)["SecretString"]
+    )
+    return settings.model_copy(
+        update={
+            "wompi_private_key": secret.get("private_key") or None,
+            "wompi_integrity_secret": secret.get("integrity_secret") or None,
+            "wompi_events_key": secret.get("events_key") or None,
+        }
+    )
+
+
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
     if settings.db_secret_arn and settings.db_proxy_endpoint:
         settings = _resolve_cloud_database_url(settings)
+    if settings.wompi_secret_arn:
+        settings = _resolve_wompi_secrets(settings)
     return settings

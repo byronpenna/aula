@@ -7,6 +7,10 @@ import { AppShell } from "./routes/AppShell";
 import { HomePage } from "./routes/HomePage";
 import { CoursesPage } from "./routes/CoursesPage";
 import { CourseDetailPage } from "./routes/CourseDetailPage";
+import { BooksPage } from "./routes/BooksPage";
+import { BookDetailPage } from "./routes/BookDetailPage";
+import { MyBooksPage } from "./routes/MyBooksPage";
+import { BooksAdminPage } from "./routes/BooksAdminPage";
 import { AssignmentDetailPage } from "./routes/AssignmentDetailPage";
 import { MyStudentsPage } from "./routes/MyStudentsPage";
 import { StudentDetailPage } from "./routes/StudentDetailPage";
@@ -36,6 +40,9 @@ function App() {
               <Route path="/courses" element={<CoursesPage />} />
               <Route path="/courses/:courseId" element={<CourseDetailPage />} />
               <Route path="/assignments/:assignmentId" element={<AssignmentDetailPage />} />
+              <Route path="/books" element={<BooksPage />} />
+              <Route path="/books/:bookId" element={<BookDetailPage />} />
+              <Route path="/mis-libros" element={<MyBooksPage />} />
               <Route path="/my-students" element={<MyStudentsPage />} />
               <Route element={<AdminLayout />}>
                 <Route path="/admin" element={<AdminDashboardPage />} />
@@ -44,6 +51,7 @@ function App() {
                 <Route path="/admin/roles" element={<AdminRolesPage />} />
                 <Route path="/admin/billing" element={<BillingAdminPage />} />
                 <Route path="/admin/accounting" element={<AccountingPage />} />
+                <Route path="/admin/books" element={<BooksAdminPage />} />
               </Route>
               <Route path="/students/:studentId" element={<StudentDetailPage />} />
               <Route path="/students/:studentId/submissions" element={<StudentSubmissionsPage />} />

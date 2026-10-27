@@ -285,3 +285,41 @@ export interface StudentPaymentPlan {
   status: string;
   installments: StudentInstallment[];
 }
+
+export interface Book {
+  id: string;
+  title: string;
+  author: string | null;
+  description: string | null;
+  price: string;
+  status: "active" | "archived";
+  file_filename: string | null;
+  file_content_type: string | null;
+  file_size_bytes: number | null;
+  created_at: string;
+  // Solo significativo para quien consulta como alumno/tutor: si ya tiene una
+  // compra "paid" de este libro (ver books/service.py::_is_owned).
+  owned: boolean;
+}
+
+export interface BookPurchase {
+  id: string;
+  book_id: string;
+  student_id: string;
+  method: "colecturia" | "wompi";
+  status: "pending" | "paid" | "failed" | "cancelled";
+  amount: string;
+  recorded_by_user_id: string | null;
+  paid_at: string | null;
+  created_at: string;
+  student_display_name: string | null;
+}
+
+export interface WompiCheckout {
+  reference: string;
+  amount_in_cents: number;
+  currency: string;
+  public_key: string;
+  integrity_signature: string;
+  checkout_base_url: string;
+}

@@ -8,6 +8,8 @@ from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, install_request_logging
 from app.modules.academics.router import router as academics_router
 from app.modules.billing.router import router as billing_router
+from app.modules.books.router import router as books_router
+from app.modules.books.router import webhook_router as books_webhook_router
 from app.modules.files.router import router as files_router
 from app.modules.identity.router import router as identity_router
 from app.modules.learning.router import router as learning_router
@@ -40,10 +42,14 @@ app.include_router(academics_router, prefix=api_v1)
 app.include_router(learning_router, prefix=api_v1)
 app.include_router(files_router, prefix=api_v1)
 app.include_router(billing_router, prefix=api_v1)
+app.include_router(books_router, prefix=api_v1)
 app.include_router(public_site_router, prefix=api_v1)
 # Sin prefijo /api/v1 a propósito: en infra/lib/api-stack.ts esta ruta va sin
 # autorizador de Cognito (visitantes anónimos del sitio público).
 app.include_router(public_site_public_router)
+# Igual que arriba: el webhook de Wompi lo llama el servidor de Wompi, no un
+# usuario autenticado (ver books/router.py::webhook_router).
+app.include_router(books_webhook_router)
 
 
 @app.get("/healthz", tags=["ops"])
