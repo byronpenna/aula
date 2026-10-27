@@ -732,3 +732,50 @@ def require_student_access(
             if academics_repo.is_student_enrolled_in_course(db, course.id, student_id):
                 return
     raise NotFoundError("El alumno indicado no existe o no tienes acceso.")
+
+
+def get_student_detail(
+    db: Session, current: CurrentMembership, user_id: uuid.UUID, student_id: uuid.UUID
+):
+    """Ficha de alumno (sección 6): mismo guard que sus matrículas (require_student_access)
+    — admin/coordinación, el docente que comparte un curso con él, su tutor vinculado, o
+    el propio alumno. `student.user_id` puede ser None (alumno sin cuenta todavía, ver
+    identity/models.py::StudentProfile), en cuyo caso no hay email/display_name reales."""
+    require_student_access(db, current, user_id, student_id)
+    student = identity_repo.get_student_profile(db, student_id)
+    if student is None:
+        raise NotFoundError("El alumno indicado no existe en este colegio.")
+    student_user = identity_repo.get_user(db, student.user_id) if student.user_id else None
+    return student, student_user
+
+
+def list_courses_for_student(
+    db: Session, current: CurrentMembership, user_id: uuid.UUID, student_id: uuid.UUID
+) -> list[Course]:
+    """Cursos (no archivados) en los que está matriculado este alumno puntual —
+    para la ficha del alumno, no el listado general de /courses (que es de "mis
+    cursos" según el rol de quien pregunta, ver list_visible_courses)."""
+    require_student_access(db, current, user_id, student_id)
+    return academics_repo.list_courses_for_students(db, current.school_id, [student_id])
+
+
+def require_student_billing_access(
+    db: Session, current: CurrentMembership, user_id: uuid.UUID, student_id: uuid.UUID
+) -> None:
+    """Ver el estado de pagos de un alumno (sección nueva, billing) es más sensible
+    que sus matrículas/entregas: alcance más angosto que require_student_access —
+    admin/coordinación, o el docente que comparte un curso con él. Nunca el propio
+    alumno ni su tutor (si se pide exponerles sus pagos, es un endpoint aparte con
+    ese alcance explícito). Responde 404, igual criterio que require_student_access."""
+    student = identity_repo.get_student_profile(db, student_id)
+    if student is None or student.school_id != current.school_id:
+        raise NotFoundError("El alumno indicado no existe en este colegio.")
+
+    if {"school_admin", "coordinator"} & current.role_codes:
+        return
+    if "teacher" in current.role_codes:
+        taught = academics_repo.list_courses_taught_by(db, current.school_id, user_id)
+        for course in taught:
+            if academics_repo.is_student_enrolled_in_course(db, course.id, student_id):
+                return
+    raise NotFoundError("El alumno indicado no existe o no tienes acceso.")

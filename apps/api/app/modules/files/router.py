@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, Request, UploadFile
 from fastapi import File as FastAPIFile
 from sqlalchemy.orm import Session
 
@@ -10,7 +10,7 @@ from app.core.config import Settings, get_settings
 from app.core.deps import CurrentMembership, get_current_membership, get_current_user
 from app.db.session import get_db
 from app.modules.files import service as files_service
-from app.modules.files.schemas import FileDownloadOut, FileOut
+from app.modules.files.schemas import FileDownloadOut, FileNoteCreate, FileNoteOut, FileOut
 from app.modules.identity.models import User
 
 router = APIRouter(tags=["files"])
@@ -113,3 +113,38 @@ def download_file(
         filename=file.filename,
         content_type=file.content_type,
     )
+
+
+@router.get("/files/{file_id}/notes", response_model=list[FileNoteOut])
+def list_file_notes(
+    file_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(get_current_membership),
+):
+    return files_service.list_file_notes(db, current, user.id, file_id)
+
+
+@router.post("/files/{file_id}/notes", response_model=FileNoteOut)
+def create_file_note(
+    file_id: uuid.UUID,
+    payload: FileNoteCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(get_current_membership),
+):
+    return files_service.create_file_note(
+        db, current, user.id, file_id, payload, request.state.request_id
+    )
+
+
+@router.delete("/file-notes/{note_id}", status_code=204)
+def delete_file_note(
+    note_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(get_current_membership),
+):
+    files_service.delete_file_note(db, current, user.id, note_id, request.state.request_id)

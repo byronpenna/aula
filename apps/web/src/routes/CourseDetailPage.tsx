@@ -1,16 +1,22 @@
-import { useRef, useState, type ChangeEvent } from "react";
+import { lazy, Suspense, useRef, useState, type ChangeEvent } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiClient } from "../lib/apiClient";
-import type { Assignment, Course, CourseResources, CourseStudent } from "../lib/types";
+import type { Assignment, Course, CourseResources, CourseStudent, FileAttachment } from "../lib/types";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { downloadFile } from "../lib/download";
 import { useAuth } from "../context/AuthContext";
+
+// pdf.js pesa bastante (visor + worker); se carga bajo demanda recién al abrir
+// una vista previa, no en el bundle principal que paga toda visita a /courses.
+const PdfPreviewModal = lazy(() =>
+  import("../components/PdfPreviewModal").then((m) => ({ default: m.PdfPreviewModal })),
+);
 
 type TabKey = "tareas" | "recursos";
 const TABS: { key: TabKey; label: string }[] = [
@@ -461,17 +467,22 @@ function CourseStudentsSection({ courseId }: { courseId: string }) {
           {data.map((student) => {
             const name = student.display_name ?? "Sin nombre registrado";
             return (
-              <li key={student.id} className="flex items-center gap-3 py-2.5">
-                <span
-                  aria-hidden="true"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 font-display text-sm font-bold text-brand-700"
+              <li key={student.id}>
+                <Link
+                  to={`/students/${student.id}`}
+                  className="focus-ring -mx-2 flex items-center gap-3 rounded-md px-2 py-2.5 hover:bg-brand-50"
                 >
-                  {name.charAt(0).toUpperCase()}
-                </span>
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-brand-900">{name}</p>
-                  <p className="text-sm text-slate-500">Matrícula {student.student_number}</p>
-                </div>
+                  <span
+                    aria-hidden="true"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 font-display text-sm font-bold text-brand-700"
+                  >
+                    {name.charAt(0).toUpperCase()}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-brand-900">{name}</p>
+                    <p className="text-sm text-slate-500">Matrícula {student.student_number}</p>
+                  </div>
+                </Link>
               </li>
             );
           })}
@@ -495,6 +506,7 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
   const [newSectionName, setNewSectionName] = useState("");
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [previewFile, setPreviewFile] = useState<{ id: string; filename: string } | null>(null);
 
   const queryKey = ["courses", courseId, "resource-sections"];
   const { data, isLoading, error } = useQuery<CourseResources>({
@@ -667,22 +679,7 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
             {section.files.length === 0 ? (
               <p className="text-sm text-slate-500">Sin archivos todavía.</p>
             ) : (
-              <ul className="space-y-1">
-                {section.files.map((file) => (
-                  <li key={file.id} className="flex items-center justify-between gap-2 text-sm">
-                    <button
-                      type="button"
-                      onClick={() => downloadFile(file.id)}
-                      className="focus-ring truncate rounded text-brand-700 underline hover:text-brand-900"
-                    >
-                      {file.filename}
-                    </button>
-                    <span className="shrink-0 text-xs text-slate-400">
-                      {(file.size_bytes / 1024).toFixed(0)} KB
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <ResourceFileList files={section.files} onPreview={setPreviewFile} />
             )}
 
             {isStaff && <ResourceUploadInput sectionId={section.id} onUploaded={invalidate} />}
@@ -695,27 +692,61 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
             <p className="mb-2 text-xs text-slate-500">
               PDFs cuya sección fue eliminada; siguen disponibles aquí.
             </p>
-            <ul className="space-y-1">
-              {data.unsectioned_files.map((file) => (
-                <li key={file.id} className="flex items-center justify-between gap-2 text-sm">
-                  <button
-                    type="button"
-                    onClick={() => downloadFile(file.id)}
-                    className="focus-ring truncate rounded text-brand-700 underline hover:text-brand-900"
-                  >
-                    {file.filename}
-                  </button>
-                  <span className="shrink-0 text-xs text-slate-400">
-                    {(file.size_bytes / 1024).toFixed(0)} KB
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <ResourceFileList files={data.unsectioned_files} onPreview={setPreviewFile} />
           </section>
         )}
       </div>
       {deleteMutation.isError && <ErrorState error={deleteMutation.error} />}
+
+      {previewFile && (
+        <Suspense fallback={null}>
+          <PdfPreviewModal
+            fileId={previewFile.id}
+            filename={previewFile.filename}
+            isStaff={isStaff}
+            onClose={() => setPreviewFile(null)}
+          />
+        </Suspense>
+      )}
     </div>
+  );
+}
+
+// Fila de un PDF de recursos: cualquiera con acceso al curso puede previsualizarlo
+// o descargarlo (ver PdfPreviewModal.tsx); compartida entre la lista de una
+// sección y la de "Sin sección" para no duplicar los dos botones por archivo.
+function ResourceFileList({
+  files,
+  onPreview,
+}: {
+  files: FileAttachment[];
+  onPreview: (file: { id: string; filename: string }) => void;
+}) {
+  return (
+    <ul className="space-y-1">
+      {files.map((file) => (
+        <li key={file.id} className="flex items-center justify-between gap-2 text-sm">
+          <span className="truncate text-brand-900">{file.filename}</span>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-xs text-slate-400">{(file.size_bytes / 1024).toFixed(0)} KB</span>
+            <button
+              type="button"
+              onClick={() => onPreview({ id: file.id, filename: file.filename })}
+              className="focus-ring rounded-md border border-brand-200 px-2 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50"
+            >
+              Ver
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadFile(file.id)}
+              className="focus-ring rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+            >
+              Descargar
+            </button>
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 

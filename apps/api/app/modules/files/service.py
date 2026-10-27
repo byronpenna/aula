@@ -19,10 +19,13 @@ from app.core.deps import CurrentMembership
 from app.core.errors import ForbiddenError, NotFoundError, UnprocessableError
 from app.modules.academics import repository as academics_repo
 from app.modules.academics import service as academics_service
+from app.modules.academics.models import Course
 from app.modules.files import repository as files_repo
-from app.modules.files.models import File
+from app.modules.files.models import File, FileNote
+from app.modules.files.schemas import FileNoteCreate
 from app.modules.files.storage import get_storage
 from app.modules.identity import repository as identity_repo
+from app.modules.identity import service as identity_service
 from app.modules.learning import repository as learning_repo
 from app.modules.learning.models import Submission
 
@@ -291,3 +294,125 @@ def get_download(
 
 def encode_content(content: bytes) -> str:
     return base64.b64encode(content).decode("ascii")
+
+
+# --- Notas sobre PDFs de recursos del curso ---------------------------------
+#
+# Solo soportadas hoy sobre `attached_to_type == "resource_section"` (ver
+# FileNote en models.py); ver el PDF alcanza con require_course_access, crear o
+# borrar una nota exige require_course_staff_access, igual criterio que el resto
+# de recursos del curso (learning/service.py).
+
+
+def _require_resource_file_course(db: Session, current: CurrentMembership, file: File) -> Course:
+    if file.attached_to_type != "resource_section":
+        raise NotFoundError("El archivo indicado no admite notas.")
+    section = learning_repo.get_resource_section(db, current.school_id, file.attached_to_id)
+    if section is None:
+        raise NotFoundError("La sección asociada ya no existe.")
+    course = academics_repo.get_course(db, current.school_id, section.course_id)
+    if course is None:
+        raise NotFoundError("El curso de la sección no existe en este colegio.")
+    return course
+
+
+def _with_author_names(db: Session, notes: list[FileNote]) -> list[FileNote]:
+    names: dict[uuid.UUID, str] = {}
+    for note in notes:
+        if note.author_user_id not in names:
+            author = identity_repo.get_user(db, note.author_user_id)
+            names[note.author_user_id] = author.display_name if author else "Usuario eliminado"
+        note.author_name = names[note.author_user_id]  # type: ignore[attr-defined]
+    return notes
+
+
+def list_file_notes(
+    db: Session, current: CurrentMembership, user_id: uuid.UUID, file_id: uuid.UUID
+) -> list[FileNote]:
+    file = files_repo.get_file(db, current.school_id, file_id)
+    if file is None:
+        raise NotFoundError("El archivo indicado no existe en este colegio.")
+    course = _require_resource_file_course(db, current, file)
+    academics_service.require_course_access(db, current, user_id, course)
+    notes = files_repo.list_notes(db, current.school_id, file_id)
+    return _with_author_names(db, notes)
+
+
+def create_file_note(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    file_id: uuid.UUID,
+    payload: FileNoteCreate,
+    request_id: str | None,
+) -> FileNote:
+    file = files_repo.get_file(db, current.school_id, file_id)
+    if file is None:
+        raise NotFoundError("El archivo indicado no existe en este colegio.")
+    course = _require_resource_file_course(db, current, file)
+    academics_service.require_course_staff_access(db, current, user_id, course)
+
+    if payload.page_number < 1:
+        raise UnprocessableError("page_number debe ser mayor o igual a 1.")
+    body = payload.body.strip()
+    if not body:
+        raise UnprocessableError("La nota no puede estar vacía.")
+    if (payload.x is None) != (payload.y is None):
+        raise UnprocessableError("x e y deben enviarse juntos, o ninguno de los dos.")
+    if payload.x is not None and not (
+        0 <= payload.x <= 1 and 0 <= (payload.y or 0) <= 1
+    ):
+        raise UnprocessableError("x e y deben ser fracciones entre 0 y 1.")
+
+    note = FileNote(
+        school_id=current.school_id,
+        file_id=file_id,
+        author_user_id=user_id,
+        page_number=payload.page_number,
+        x=payload.x,
+        y=payload.y,
+        body=body,
+    )
+    db.add(note)
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="file_note.create",
+        target_type="file_note",
+        target_id=str(note.id),
+        request_id=request_id,
+    )
+    db.commit()
+    db.refresh(note)
+    [note] = _with_author_names(db, [note])
+    return note
+
+
+def delete_file_note(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    note_id: uuid.UUID,
+    request_id: str | None,
+) -> None:
+    note = files_repo.get_note(db, current.school_id, note_id)
+    if note is None:
+        raise NotFoundError("La nota indicada no existe en este colegio.")
+    file = files_repo.get_file(db, current.school_id, note.file_id)
+    if file is None:
+        raise NotFoundError("El archivo indicado no existe en este colegio.")
+    course = _require_resource_file_course(db, current, file)
+    academics_service.require_course_staff_access(db, current, user_id, course)
+
+    db.delete(note)
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="file_note.delete",
+        target_type="file_note",
+        target_id=str(note.id),
+        request_id=request_id,
+    )
+    db.commit()

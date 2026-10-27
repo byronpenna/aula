@@ -236,6 +236,33 @@ def list_enrollments_for_student(
     return list(db.execute(stmt).scalars().all())
 
 
+def list_enrollments_for_year(
+    db: Session, school_id: uuid.UUID, academic_year_id: uuid.UUID
+) -> list[Enrollment]:
+    """Quiénes se inscriben al año escolar (sección nueva, billing): puede haber
+    más de una Enrollment activa por alumno en el mismo año (sin constraint única
+    hoy, ver create_enrollment); el caller (billing_service) dedupe por
+    student_id, le basta con saber que el alumno está matriculado ese año."""
+    stmt = select(Enrollment).where(
+        Enrollment.school_id == school_id,
+        Enrollment.academic_year_id == academic_year_id,
+        Enrollment.status == "active",
+    ).order_by(Enrollment.created_at)
+    return list(db.execute(stmt).scalars().all())
+
+
+def get_enrollment_for_student_year(
+    db: Session, school_id: uuid.UUID, student_id: uuid.UUID, academic_year_id: uuid.UUID
+) -> Enrollment | None:
+    stmt = select(Enrollment).where(
+        Enrollment.school_id == school_id,
+        Enrollment.student_id == student_id,
+        Enrollment.academic_year_id == academic_year_id,
+        Enrollment.status == "active",
+    )
+    return db.execute(stmt).scalars().first()
+
+
 def list_students_not_in_course(
     db: Session, school_id: uuid.UUID, course_id: uuid.UUID
 ) -> list[tuple[StudentProfile, str | None]]:

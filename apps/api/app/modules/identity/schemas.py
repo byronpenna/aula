@@ -34,6 +34,17 @@ class StudentProfileOut(BaseModel):
     display_name: str | None
 
 
+class StudentDetailOut(BaseModel):
+    """Ficha de alumno (sección 6): mismo guard que sus matrículas/entregas —
+    admin/coordinación, el propio alumno, su tutor vinculado, o un docente que
+    comparta al menos un curso con él (academics_service.require_student_access)."""
+
+    id: uuid.UUID
+    student_number: str
+    display_name: str | None
+    email: str | None
+
+
 class LinkedStudentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     student_id: uuid.UUID

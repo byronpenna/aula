@@ -156,6 +156,13 @@ export interface StudentProfile {
   display_name: string | null;
 }
 
+export interface StudentDetail {
+  id: string;
+  student_number: string;
+  display_name: string | null;
+  email: string | null;
+}
+
 export interface EnrollmentRecord {
   id: string;
   academic_year_id: string;
@@ -178,6 +185,20 @@ export interface FileAttachment {
   created_at: string;
 }
 
+// `x`/`y` presentes juntos = nota de punto exacto (fracción 0..1 del ancho/alto
+// de esa página); ambos null = nota de página completa (ver PdfPreviewModal.tsx).
+export interface FileNote {
+  id: string;
+  file_id: string;
+  author_user_id: string;
+  author_name: string;
+  page_number: number;
+  x: number | null;
+  y: number | null;
+  body: string;
+  created_at: string;
+}
+
 export interface Assignment {
   id: string;
   course_id: string;
@@ -197,4 +218,70 @@ export interface Submission {
   submitted_at: string | null;
   version: number;
   late: boolean;
+}
+
+export interface PaymentPlan {
+  id: string;
+  academic_year_id: string;
+  name: string;
+  total_amount: string;
+  status: string;
+}
+
+export interface PaymentPlanInstallment {
+  id: string;
+  payment_plan_id: string;
+  due_date: string;
+  amount: string;
+}
+
+export interface PaymentPlanWithInstallments {
+  plan: PaymentPlan;
+  installments: PaymentPlanInstallment[];
+}
+
+export interface EnrolledStudent {
+  id: string;
+  student_number: string;
+  display_name: string | null;
+  section_id: string;
+  has_payment_plan: boolean;
+}
+
+export interface Payment {
+  id: string;
+  payment_transaction_id: string;
+  method: "cash" | "card";
+  authorization_number: string | null;
+  paid_at: string;
+}
+
+export interface PaymentTransaction {
+  id: string;
+  method: "cash" | "card";
+  authorization_number: string | null;
+  amount_tendered: string | null;
+  amount_total: string;
+  change_given: string | null;
+  paid_at: string;
+  recorded_by_user_id: string;
+}
+
+export interface StudentInstallment {
+  id: string;
+  due_date: string;
+  amount: string;
+  status: string;
+  effective_status: "paid" | "pending" | "overdue";
+  payment: Payment | null;
+}
+
+export interface StudentPaymentPlan {
+  id: string;
+  student_id: string;
+  academic_year_id: string;
+  payment_plan_id: string;
+  payment_plan_name: string;
+  status: string;
+  installments: StudentInstallment[];
 }

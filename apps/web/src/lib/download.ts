@@ -28,3 +28,23 @@ export async function downloadFile(fileId: string): Promise<void> {
   link.remove();
   URL.revokeObjectURL(url);
 }
+
+// Para la vista previa (PdfPreviewModal.tsx): mismo endpoint/payload que
+// downloadFile, pero devuelve un blob: URL en vez de disparar la descarga, para
+// pasárselo a pdf.js. El caller es responsable de revocar la URL al terminar.
+export async function getFileBlobUrl(
+  fileId: string,
+): Promise<{ url: string; filename: string; contentType: string }> {
+  const { data } = await apiClient.get<FileDownload>(`/files/${fileId}/download`);
+  if (data.url) {
+    const response = await fetch(data.url);
+    const blob = await response.blob();
+    return { url: URL.createObjectURL(blob), filename: data.filename, contentType: data.content_type };
+  }
+  if (!data.content_base64) {
+    throw new Error("El archivo no tiene contenido disponible.");
+  }
+  const bytes = Uint8Array.from(atob(data.content_base64), (c) => c.charCodeAt(0));
+  const blob = new Blob([bytes], { type: data.content_type });
+  return { url: URL.createObjectURL(blob), filename: data.filename, contentType: data.content_type };
+}

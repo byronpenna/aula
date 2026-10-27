@@ -45,6 +45,7 @@ from app.modules.academics.schemas import (
     SubjectUpdate,
 )
 from app.modules.identity.models import User
+from app.modules.identity.schemas import StudentDetailOut
 
 router = APIRouter(tags=["academics"])
 
@@ -425,3 +426,30 @@ def list_student_enrollments(
 ) -> list[Enrollment]:
     academics_service.require_student_access(db, current, user.id, student_id)
     return academics_repo.list_enrollments_for_student(db, current.school_id, student_id)
+
+
+@router.get("/students/{student_id}", response_model=StudentDetailOut)
+def get_student_detail(
+    student_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> StudentDetailOut:
+    student, student_user = academics_service.get_student_detail(db, current, user.id, student_id)
+    return StudentDetailOut(
+        id=student.id,
+        student_number=student.student_number,
+        display_name=student_user.display_name if student_user else None,
+        email=student_user.email if student_user else None,
+    )
+
+
+@router.get("/students/{student_id}/courses", response_model=list[CourseOut])
+def list_student_courses(
+    student_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> list[CourseOut]:
+    courses = academics_service.list_courses_for_student(db, current, user.id, student_id)
+    return [_course_out(db, course) for course in courses]

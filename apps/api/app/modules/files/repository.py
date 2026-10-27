@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.files.models import File
+from app.modules.files.models import File, FileNote
 
 
 def list_files(
@@ -21,4 +21,16 @@ def list_files(
 
 def get_file(db: Session, school_id: uuid.UUID, file_id: uuid.UUID) -> File | None:
     stmt = select(File).where(File.id == file_id, File.school_id == school_id)
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def list_notes(db: Session, school_id: uuid.UUID, file_id: uuid.UUID) -> list[FileNote]:
+    stmt = select(FileNote).where(
+        FileNote.school_id == school_id, FileNote.file_id == file_id
+    ).order_by(FileNote.page_number, FileNote.created_at)
+    return list(db.execute(stmt).scalars().all())
+
+
+def get_note(db: Session, school_id: uuid.UUID, note_id: uuid.UUID) -> FileNote | None:
+    stmt = select(FileNote).where(FileNote.id == note_id, FileNote.school_id == school_id)
     return db.execute(stmt).scalar_one_or_none()

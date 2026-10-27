@@ -31,6 +31,14 @@ const NAV_SECTIONS: NavSection[] = [
       { to: "/admin/roles", label: "Roles y permisos", end: false },
     ],
   },
+  {
+    title: "Pagos",
+    requiresPermission: "billing:manage",
+    items: [
+      { to: "/admin/billing", label: "Planes de pago", end: false },
+      { to: "/admin/accounting", label: "Contabilidad", end: false },
+    ],
+  },
 ];
 
 export function AdminLayout() {
