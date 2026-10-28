@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Request, UploadFile
+from fastapi import APIRouter, Depends, Request, Response, UploadFile
 from fastapi import File as FastAPIFile
 from sqlalchemy.orm import Session
 
@@ -19,7 +19,7 @@ from app.modules.books import service as books_service
 from app.modules.books.models import Book
 from app.modules.books.schemas import (
     BookCreate,
-    BookDownloadOut,
+    BookFileVersionOut,
     BookOut,
     BookPurchaseOut,
     BookUpdate,
@@ -161,20 +161,65 @@ async def upload_book_file(
     return _book_out(book, owned=False)
 
 
-@router.get("/books/{book_id}/download", response_model=BookDownloadOut)
-def download_book(
+@router.get("/books/{book_id}/versions", response_model=list[BookFileVersionOut])
+def list_book_file_versions(
+    book_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(BOOKS_MANAGE)),
+):
+    versions = books_service.list_book_file_versions(db, current, book_id)
+    return [BookFileVersionOut.model_validate(v) for v in versions]
+
+
+@router.post("/books/{book_id}/versions/{version_id}/activate", response_model=BookOut)
+def activate_book_file_version(
+    book_id: uuid.UUID,
+    version_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(BOOKS_MANAGE)),
+):
+    book = books_service.activate_book_file_version(
+        db, current, book_id, version_id, request.state.request_id
+    )
+    return _book_out(book, owned=False)
+
+
+@router.post("/books/{book_id}/versions/{version_id}/deactivate", response_model=BookOut)
+def deactivate_book_file_version(
+    book_id: uuid.UUID,
+    version_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(BOOKS_MANAGE)),
+):
+    book = books_service.deactivate_book_file_version(
+        db, current, book_id, version_id, request.state.request_id
+    )
+    return _book_out(book, owned=False)
+
+
+@router.get("/books/{book_id}/content")
+def get_book_content(
     book_id: uuid.UUID,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
     user: User = Depends(get_current_user),
     current: CurrentMembership = Depends(get_current_membership),
 ):
-    book, url, content = books_service.get_book_download(db, settings, current, user.id, book_id)
-    return BookDownloadOut(
-        url=url,
-        content_base64=books_service.base64_encode(content) if content is not None else None,
-        filename=book.file_filename or book.title,
-        content_type=book.file_content_type or "application/octet-stream",
+    """Nunca una URL firmada (sección nueva, confirmado con el usuario: los
+    libros no se descargan): los bytes siempre viajan por este endpoint con
+    JWT vigente. `inline` + `no-store` refuerzan "ver, no guardar" del lado del
+    navegador, aunque el control real es que el frontend nunca ofrece un
+    enlace de descarga — ver books/service.py::get_book_content."""
+    book, content = books_service.get_book_content(db, settings, current, user.id, book_id)
+    return Response(
+        content=content,
+        media_type=book.file_content_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": f'inline; filename="{book.file_filename}"',
+            "Cache-Control": "private, no-store",
+        },
     )
 
 

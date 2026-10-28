@@ -1,10 +1,11 @@
 import { useRef, useState, type ChangeEvent } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiClient } from "../lib/apiClient";
-import type { Book, BookPurchase, Permissions, StudentProfile } from "../lib/types";
+import type { Book, BookFileVersion, BookPurchase, Permissions, StudentProfile } from "../lib/types";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { EmptyState, ErrorState, ForbiddenState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
@@ -182,7 +183,10 @@ function BookCard({
   onChanged: () => void;
 }) {
   const [showPurchases, setShowPurchases] = useState(false);
+  const [showVersions, setShowVersions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
+  const versionsKey = ["books", book.id, "versions"];
 
   const uploadMutation = useMutation({
     mutationFn: async (file: globalThis.File) => {
@@ -192,6 +196,7 @@ function BookCard({
     },
     onSuccess: () => {
       if (inputRef.current) inputRef.current.value = "";
+      queryClient.invalidateQueries({ queryKey: versionsKey });
       onChanged();
     },
   });
@@ -213,6 +218,18 @@ function BookCard({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {book.file_filename && (
+            <Link to={`/books/${book.id}/read`} className={smallBtn}>
+              Leer
+            </Link>
+          )}
+          <button
+            type="button"
+            className={smallBtn}
+            onClick={() => setShowVersions((v) => !v)}
+          >
+            {showVersions ? "Ocultar versiones" : "Ver versiones"}
+          </button>
           <button
             type="button"
             className={smallBtn}
@@ -238,9 +255,85 @@ function BookCard({
         />
         {uploadMutation.isPending && <p className="text-xs text-slate-500">Subiendo…</p>}
       </div>
+      <p className="mt-1 text-xs text-slate-400">
+        Cada archivo subido queda como una versión nueva en el historial; la primera versión de un
+        libro se activa sola, las siguientes hay que activarlas desde "Ver versiones".
+      </p>
       {uploadMutation.isError && <ErrorState error={uploadMutation.error} />}
 
+      {showVersions && <BookVersionsPanel bookId={book.id} onChanged={onChanged} />}
       {showPurchases && <BookPurchasesPanel bookId={book.id} />}
+    </div>
+  );
+}
+
+function BookVersionsPanel({ bookId, onChanged }: { bookId: string; onChanged: () => void }) {
+  const queryClient = useQueryClient();
+  const versionsKey = ["books", bookId, "versions"];
+  const { data, isLoading, error } = useQuery<BookFileVersion[]>({
+    queryKey: versionsKey,
+    queryFn: async () => (await apiClient.get(`/books/${bookId}/versions`)).data,
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ versionId, action }: { versionId: string; action: "activate" | "deactivate" }) =>
+      (await apiClient.post(`/books/${bookId}/versions/${versionId}/${action}`)).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: versionsKey });
+      onChanged();
+    },
+  });
+
+  return (
+    <div className="mt-3 rounded-md bg-slate-50 p-3">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Historial de versiones
+      </h3>
+      {isLoading && <LoadingState label="Cargando versiones…" />}
+      {error && <ErrorState error={error} />}
+      {data && data.length === 0 && (
+        <p className="text-sm text-slate-500">Todavía no se ha subido ningún archivo.</p>
+      )}
+      {data && data.length > 0 && (
+        <ul className="space-y-1.5">
+          {data.map((version) => (
+            <li
+              key={version.id}
+              className="flex flex-wrap items-center justify-between gap-2 text-sm"
+            >
+              <span>
+                {version.filename} · {(version.size_bytes / 1024).toFixed(0)} KB ·{" "}
+                {new Date(version.created_at).toLocaleString()}
+              </span>
+              <span className="flex items-center gap-2">
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
+                    version.is_active
+                      ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                      : "bg-slate-100 text-slate-600 ring-slate-200"
+                  }`}
+                >
+                  {version.is_active ? "Activa" : "Inactiva"}
+                </span>
+                <button
+                  type="button"
+                  className={smallBtn}
+                  disabled={toggleMutation.isPending}
+                  onClick={() =>
+                    toggleMutation.mutate({
+                      versionId: version.id,
+                      action: version.is_active ? "deactivate" : "activate",
+                    })
+                  }
+                >
+                  {version.is_active ? "Desactivar" : "Activar"}
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {toggleMutation.isError && <ErrorState error={toggleMutation.error} />}
     </div>
   );
 }

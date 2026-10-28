@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient } from "../lib/apiClient";
 import type { Book, WompiCheckout } from "../lib/types";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { formatMoney as money } from "../lib/money";
-import { downloadBook } from "../lib/download";
 
 // Detalle + compra de un libro (módulo nuevo). "Comprar con Wompi" solo se
 // habilita si hay una llave pública configurada (VITE_WOMPI_PUBLIC_KEY); sin
@@ -55,13 +54,12 @@ export function BookDetailPage() {
 
         <div className="mt-5 flex flex-wrap items-center gap-3">
           {book.owned ? (
-            <button
-              type="button"
-              onClick={() => downloadBook(book.id)}
+            <Link
+              to={`/books/${book.id}/read`}
               className="focus-ring rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
             >
-              Leer / descargar
-            </button>
+              Leer ahora
+            </Link>
           ) : (
             <button
               type="button"

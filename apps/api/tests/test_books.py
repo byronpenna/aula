@@ -1,6 +1,7 @@
 """Catálogo de libros digitales y sus compras (módulo nuevo, independiente de
-cursos): el catálogo es de lectura abierta, pero el archivo solo lo puede
-descargar quien tiene una compra `paid` (colecturía manual o Wompi)."""
+cursos): el catálogo es de lectura abierta, pero el contenido del archivo solo
+lo puede leer quien tiene una compra `paid` (colecturía manual o Wompi) — nunca
+se expone como descarga ni como URL firmada."""
 
 from __future__ import annotations
 
@@ -26,7 +27,7 @@ def _setup_school_with_student(db_session, unique_suffix, *, extra_roles=None):
     return school, admin, student_user, profile
 
 
-def test_catalog_is_open_but_download_requires_colecturia_purchase(db_session, client, unique_suffix):
+def test_catalog_is_open_but_content_requires_colecturia_purchase(db_session, client, unique_suffix):
     f.ensure_role_catalog(db_session)
     school, admin, student_user, profile = _setup_school_with_student(db_session, unique_suffix)
     admin_headers = f.auth_headers(admin, school_id=school.id)
@@ -54,8 +55,8 @@ def test_catalog_is_open_but_download_requires_colecturia_purchase(db_session, c
     assert len(catalog_resp.json()) == 1
     assert catalog_resp.json()[0]["owned"] is False
 
-    # Sin compra, la descarga no revela el libro (404, nunca 403).
-    denied_resp = client.get(f"/api/v1/books/{book_id}/download", headers=student_headers)
+    # Sin compra, el contenido no revela el libro (404, nunca 403).
+    denied_resp = client.get(f"/api/v1/books/{book_id}/content", headers=student_headers)
     assert denied_resp.status_code == 404, denied_resp.text
 
     # El admin registra la compra por colecturía (ya cobrada, sin aprobación previa).
@@ -68,14 +69,145 @@ def test_catalog_is_open_but_download_requires_colecturia_purchase(db_session, c
     assert purchase_resp.json()["status"] == "paid"
     assert purchase_resp.json()["method"] == "colecturia"
 
-    # Ahora sí puede descargarlo.
-    download_resp = client.get(f"/api/v1/books/{book_id}/download", headers=student_headers)
-    assert download_resp.status_code == 200, download_resp.text
-    assert download_resp.json()["content_base64"] is not None
+    # Ahora sí puede leerlo: el contenido viaja como bytes, nunca como URL.
+    content_resp = client.get(f"/api/v1/books/{book_id}/content", headers=student_headers)
+    assert content_resp.status_code == 200, content_resp.text
+    assert content_resp.headers["content-type"] == "application/pdf"
+    assert content_resp.content == b"%PDF-1.4 contenido de prueba"
 
     my_books_resp = client.get("/api/v1/me/books", headers=student_headers)
     assert my_books_resp.status_code == 200, my_books_resp.text
     assert [b["id"] for b in my_books_resp.json()] == [book_id]
+
+
+def test_epub_upload_with_generic_browser_mime_type_is_accepted(db_session, client, unique_suffix):
+    """Muchos navegadores/SO no tienen `.epub` registrado en su tabla de tipos
+    MIME y mandan `application/octet-stream` (o vacío) en su lugar — la
+    extensión del archivo es el respaldo (ver
+    books/service.py::_resolve_content_type), para no rechazar un EPUB válido
+    solo por esa limitación."""
+    f.ensure_role_catalog(db_session)
+    school, admin, _student_user, _profile = _setup_school_with_student(db_session, unique_suffix)
+    admin_headers = f.auth_headers(admin, school_id=school.id)
+    book_id = client.post(
+        "/api/v1/books", headers=admin_headers, json={"title": "Geometría", "price": "5.00"}
+    ).json()["id"]
+
+    upload_resp = client.post(
+        f"/api/v1/books/{book_id}/file",
+        headers=admin_headers,
+        files={"upload": ("libro.epub", b"PK\x03\x04 contenido epub falso", "application/octet-stream")},
+    )
+    assert upload_resp.status_code == 200, upload_resp.text
+    assert upload_resp.json()["file_content_type"] == "application/epub+zip"
+
+
+def test_versions_history_activate_and_deactivate(db_session, client, unique_suffix):
+    """Gestión de versiones del archivo (sección nueva): cada subida agrega una
+    versión al historial, la primera se activa sola, las siguientes quedan
+    inactivas hasta que el staff elige activarlas — y desactivar la única
+    versión activa deja al libro sin contenido legible."""
+    f.ensure_role_catalog(db_session)
+    school, admin, student_user, profile = _setup_school_with_student(db_session, unique_suffix)
+    admin_headers = f.auth_headers(admin, school_id=school.id)
+    student_headers = f.auth_headers(student_user, school_id=school.id)
+
+    book_id = client.post(
+        "/api/v1/books", headers=admin_headers, json={"title": "Cálculo", "price": "11.00"}
+    ).json()["id"]
+
+    first_upload = client.post(
+        f"/api/v1/books/{book_id}/file",
+        headers=admin_headers,
+        files={"upload": ("calculo_v1.pdf", b"%PDF-1.4 version uno", "application/pdf")},
+    )
+    assert first_upload.status_code == 200, first_upload.text
+    assert first_upload.json()["file_filename"] == "calculo_v1.pdf"
+
+    versions_resp = client.get(f"/api/v1/books/{book_id}/versions", headers=admin_headers)
+    assert versions_resp.status_code == 200, versions_resp.text
+    versions = versions_resp.json()
+    assert len(versions) == 1
+    assert versions[0]["is_active"] is True
+    first_version_id = versions[0]["id"]
+
+    client.post(
+        f"/api/v1/books/{book_id}/purchases/colecturia",
+        headers=admin_headers,
+        json={"student_id": str(profile.id)},
+    )
+    content_v1 = client.get(f"/api/v1/books/{book_id}/content", headers=student_headers)
+    assert content_v1.content == b"%PDF-1.4 version uno"
+
+    # Subir una segunda versión no reemplaza la activa automáticamente.
+    second_upload = client.post(
+        f"/api/v1/books/{book_id}/file",
+        headers=admin_headers,
+        files={"upload": ("calculo_v2.pdf", b"%PDF-1.4 version dos", "application/pdf")},
+    )
+    assert second_upload.status_code == 200, second_upload.text
+    assert second_upload.json()["file_filename"] == "calculo_v1.pdf"
+
+    versions = client.get(f"/api/v1/books/{book_id}/versions", headers=admin_headers).json()
+    assert len(versions) == 2
+    second_version = next(v for v in versions if v["filename"] == "calculo_v2.pdf")
+    assert second_version["is_active"] is False
+
+    # Activar la v2 la vuelve la única activa y cambia el contenido servido.
+    activate_resp = client.post(
+        f"/api/v1/books/{book_id}/versions/{second_version['id']}/activate", headers=admin_headers
+    )
+    assert activate_resp.status_code == 200, activate_resp.text
+    assert activate_resp.json()["file_filename"] == "calculo_v2.pdf"
+
+    content_v2 = client.get(f"/api/v1/books/{book_id}/content", headers=student_headers)
+    assert content_v2.content == b"%PDF-1.4 version dos"
+
+    versions = client.get(f"/api/v1/books/{book_id}/versions", headers=admin_headers).json()
+    active_ids = [v["id"] for v in versions if v["is_active"]]
+    assert active_ids == [second_version["id"]]
+
+    # Desactivar la única versión activa deja al libro sin contenido legible.
+    deactivate_resp = client.post(
+        f"/api/v1/books/{book_id}/versions/{second_version['id']}/deactivate", headers=admin_headers
+    )
+    assert deactivate_resp.status_code == 200, deactivate_resp.text
+    assert deactivate_resp.json()["file_filename"] is None
+
+    no_content_resp = client.get(f"/api/v1/books/{book_id}/content", headers=student_headers)
+    assert no_content_resp.status_code == 404, no_content_resp.text
+
+    # Reactivar la v1 vuelve a dejar el libro legible.
+    reactivate_resp = client.post(
+        f"/api/v1/books/{book_id}/versions/{first_version_id}/activate", headers=admin_headers
+    )
+    assert reactivate_resp.status_code == 200, reactivate_resp.text
+    content_again = client.get(f"/api/v1/books/{book_id}/content", headers=student_headers)
+    assert content_again.status_code == 200, content_again.text
+    assert content_again.content == b"%PDF-1.4 version uno"
+
+
+def test_student_cannot_list_or_manage_book_versions(db_session, client, unique_suffix):
+    f.ensure_role_catalog(db_session)
+    school, admin, student_user, _profile = _setup_school_with_student(db_session, unique_suffix)
+    admin_headers = f.auth_headers(admin, school_id=school.id)
+    student_headers = f.auth_headers(student_user, school_id=school.id)
+
+    book_id = client.post(
+        "/api/v1/books", headers=admin_headers, json={"title": "Biología", "price": "7.00"}
+    ).json()["id"]
+    client.post(
+        f"/api/v1/books/{book_id}/file",
+        headers=admin_headers,
+        files={"upload": ("biologia.pdf", b"%PDF-1.4 bio", "application/pdf")},
+    )
+    version_id = client.get(f"/api/v1/books/{book_id}/versions", headers=admin_headers).json()[0]["id"]
+
+    assert client.get(f"/api/v1/books/{book_id}/versions", headers=student_headers).status_code == 403
+    activate_resp = client.post(
+        f"/api/v1/books/{book_id}/versions/{version_id}/activate", headers=student_headers
+    )
+    assert activate_resp.status_code == 403, activate_resp.text
 
 
 def test_second_student_without_purchase_still_denied(db_session, client, unique_suffix):
@@ -104,7 +236,7 @@ def test_second_student_without_purchase_still_denied(db_session, client, unique
     )
 
     other_headers = f.auth_headers(other_student_user, school_id=school.id)
-    resp = client.get(f"/api/v1/books/{book_id}/download", headers=other_headers)
+    resp = client.get(f"/api/v1/books/{book_id}/content", headers=other_headers)
     assert resp.status_code == 404, resp.text
 
 
@@ -203,7 +335,7 @@ def test_wompi_checkout_and_webhook_confirm_purchase(db_session, client, unique_
         assert checkout["public_key"] == "pub_test_dummy"
 
         # Todavía pendiente: sin confirmación del webhook, no hay acceso.
-        denied = client.get(f"/api/v1/books/{book_id}/download", headers=student_headers)
+        denied = client.get(f"/api/v1/books/{book_id}/content", headers=student_headers)
         assert denied.status_code == 404, denied.text
 
         reference = checkout["reference"]
@@ -223,7 +355,7 @@ def test_wompi_checkout_and_webhook_confirm_purchase(db_session, client, unique_
         webhook_resp = client.post("/webhooks/wompi", json=webhook_payload)
         assert webhook_resp.status_code == 204, webhook_resp.text
 
-        allowed = client.get(f"/api/v1/books/{book_id}/download", headers=student_headers)
+        allowed = client.get(f"/api/v1/books/{book_id}/content", headers=student_headers)
         assert allowed.status_code == 200, allowed.text
 
         # Reintento del mismo evento: idempotente, no falla ni duplica.

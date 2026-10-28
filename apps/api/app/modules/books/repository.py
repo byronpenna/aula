@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.books.models import Book, BookPurchase
+from app.modules.books.models import Book, BookFileVersion, BookPurchase
 
 
 def list_books(db: Session, school_id: uuid.UUID, *, include_archived: bool) -> list[Book]:
@@ -50,6 +50,49 @@ def list_purchases_for_book(
         .order_by(BookPurchase.created_at.desc())
     )
     return list(db.execute(stmt).scalars().all())
+
+
+def get_active_file_version(
+    db: Session, school_id: uuid.UUID, book_id: uuid.UUID
+) -> BookFileVersion | None:
+    stmt = select(BookFileVersion).where(
+        BookFileVersion.school_id == school_id,
+        BookFileVersion.book_id == book_id,
+        BookFileVersion.is_active.is_(True),
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def get_file_version(
+    db: Session, school_id: uuid.UUID, book_id: uuid.UUID, version_id: uuid.UUID
+) -> BookFileVersion | None:
+    stmt = select(BookFileVersion).where(
+        BookFileVersion.id == version_id,
+        BookFileVersion.school_id == school_id,
+        BookFileVersion.book_id == book_id,
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def list_file_versions(
+    db: Session, school_id: uuid.UUID, book_id: uuid.UUID
+) -> list[BookFileVersion]:
+    stmt = (
+        select(BookFileVersion)
+        .where(BookFileVersion.school_id == school_id, BookFileVersion.book_id == book_id)
+        .order_by(BookFileVersion.created_at.desc())
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def deactivate_all_file_versions(db: Session, school_id: uuid.UUID, book_id: uuid.UUID) -> None:
+    stmt = select(BookFileVersion).where(
+        BookFileVersion.school_id == school_id,
+        BookFileVersion.book_id == book_id,
+        BookFileVersion.is_active.is_(True),
+    )
+    for version in db.execute(stmt).scalars().all():
+        version.is_active = False
 
 
 def list_paid_books_for_student(

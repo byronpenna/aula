@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
@@ -23,6 +24,12 @@ import { AdminRolesPage } from "./routes/AdminRolesPage";
 import { BillingAdminPage } from "./routes/BillingAdminPage";
 import { AccountingPage } from "./routes/AccountingPage";
 
+// Carga perezosa a propósito: arrastra pdfjs-dist y epubjs (~800kB juntos), que
+// no deben inflar el bundle principal para quien nunca abre un libro.
+const BookReaderPage = lazy(() =>
+  import("./routes/BookReaderPage").then((m) => ({ default: m.BookReaderPage })),
+);
+
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
 });
@@ -35,6 +42,22 @@ function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/callback" element={<CallbackPage />} />
+            {/* Fuera de <AppShell> a propósito: lector de libros a pantalla
+                completa, sin el header/nav del sitio (ver BookReaderPage.tsx). */}
+            <Route
+              path="/books/:bookId/read"
+              element={
+                <Suspense
+                  fallback={
+                    <div className="flex h-dvh items-center justify-center bg-slate-900 text-sm text-slate-300">
+                      Cargando…
+                    </div>
+                  }
+                >
+                  <BookReaderPage />
+                </Suspense>
+              }
+            />
             <Route element={<AppShell />}>
               <Route path="/" element={<HomePage />} />
               <Route path="/courses" element={<CoursesPage />} />

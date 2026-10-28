@@ -2,13 +2,18 @@
 
 Regla universal (sección 6): el catálogo (título, autor, precio) es de lectura
 abierta a cualquiera con el permiso `books:read`; lo único gateado por compra es
-el contenido — ver `require_book_purchase_access`/`get_book_download`, mismo
+el contenido — ver `require_book_purchase_access`/`get_book_content`, mismo
 criterio "404 si no hay acceso" que `files/service.py::get_download`.
+
+`get_book_content` nunca usa `storage.download_url()` (a diferencia de
+`files/service.py`): los libros no deben poder descargarse vía un enlace que
+funcione fuera de sesión (confirmado con el usuario), así que siempre lee los
+bytes y los sirve por este mismo endpoint autenticado — ver
+`books/router.py::get_book_content`.
 """
 
 from __future__ import annotations
 
-import base64
 import uuid
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -20,7 +25,7 @@ from app.core.deps import CurrentMembership
 from app.core.errors import ForbiddenError, NotFoundError, UnprocessableError
 from app.modules.books import repository as books_repo
 from app.modules.books import wompi_client
-from app.modules.books.models import Book, BookPurchase
+from app.modules.books.models import Book, BookFileVersion, BookPurchase
 from app.modules.files.storage import get_storage
 from app.modules.identity import repository as identity_repo
 from app.modules.identity import service as identity_service
@@ -198,6 +203,29 @@ def set_book_status(
     return book
 
 
+# content_type "genérico" que el navegador manda cuando no tiene registrado el
+# tipo MIME real en el sistema operativo — pasa seguido con .epub (mucho menos
+# reconocido que .pdf en las tablas mime.types de muchos navegadores/SO).
+_GENERIC_CONTENT_TYPES = {"application/octet-stream", ""}
+_EXTENSION_CONTENT_TYPES = {
+    ".pdf": "application/pdf",
+    ".epub": "application/epub+zip",
+}
+
+
+def _resolve_content_type(filename: str, content_type: str) -> str:
+    """Si el navegador no reconoció el tipo MIME real (sección nueva: .epub es
+    un caso común), se infiere por la extensión del archivo antes de validar —
+    de lo contrario un EPUB válido se rechazaría solo por una limitación del
+    navegador/SO, no del archivo en sí."""
+    if content_type not in _GENERIC_CONTENT_TYPES:
+        return content_type
+    for extension, resolved in _EXTENSION_CONTENT_TYPES.items():
+        if filename.lower().endswith(extension):
+            return resolved
+    return content_type
+
+
 def _validate_book_upload(filename: str, content_type: str, content: bytes) -> None:
     if not filename:
         raise UnprocessableError("El archivo debe tener un nombre.")
@@ -213,6 +241,23 @@ def _validate_book_upload(filename: str, content_type: str, content: bytes) -> N
         raise UnprocessableError(f"El archivo supera el máximo permitido ({max_mb}MB).")
 
 
+def _sync_active_file_onto_book(book: Book, version: BookFileVersion) -> None:
+    """Denormaliza la versión activa sobre `Book.file_*` (sección nueva: versiones
+    de archivo) para que `get_book_content`/`BookOut` sigan leyendo esas columnas
+    sin enterarse de que ahora hay un historial detrás."""
+    book.file_filename = version.filename
+    book.file_content_type = version.content_type
+    book.file_size_bytes = version.size_bytes
+    book.file_storage_key = version.storage_key
+
+
+def _clear_active_file_on_book(book: Book) -> None:
+    book.file_filename = None
+    book.file_content_type = None
+    book.file_size_bytes = None
+    book.file_storage_key = None
+
+
 def upload_book_file(
     db: Session,
     settings: Settings,
@@ -223,7 +268,14 @@ def upload_book_file(
     content: bytes,
     request_id: str | None,
 ) -> Book:
+    """Cada subida agrega una versión nueva al historial (sección nueva: gestión
+    de versiones), nunca sobrescribe la anterior. Si el libro todavía no tiene
+    ninguna versión activa (primera subida, o la activa fue desactivada sin
+    reemplazo) esta se activa automáticamente para no romper el flujo existente
+    de "subir y quedar listo para leer"; en cualquier otro caso queda inactiva y
+    el staff decide cuándo activarla desde `activate_book_file_version`."""
     book = _require_book(db, current.school_id, book_id)
+    content_type = _resolve_content_type(filename, content_type)
     _validate_book_upload(filename, content_type, content)
 
     storage_key = (
@@ -232,10 +284,21 @@ def upload_book_file(
     )
     get_storage(settings).save(storage_key, content)
 
-    book.file_filename = filename
-    book.file_content_type = content_type
-    book.file_size_bytes = len(content)
-    book.file_storage_key = storage_key
+    has_active = books_repo.get_active_file_version(db, current.school_id, book.id) is not None
+    version = BookFileVersion(
+        school_id=current.school_id,
+        book_id=book.id,
+        filename=filename,
+        content_type=content_type,
+        size_bytes=len(content),
+        storage_key=storage_key,
+        is_active=not has_active,
+        uploaded_by_user_id=current.membership.user_id,
+    )
+    db.add(version)
+    db.flush()
+    if not has_active:
+        _sync_active_file_onto_book(book, version)
 
     identity_service.record_audit_event(
         db,
@@ -251,27 +314,95 @@ def upload_book_file(
     return book
 
 
-def get_book_download(
+def list_book_file_versions(
+    db: Session, current: CurrentMembership, book_id: uuid.UUID
+) -> list[BookFileVersion]:
+    _require_book(db, current.school_id, book_id)
+    return books_repo.list_file_versions(db, current.school_id, book_id)
+
+
+def _require_file_version(
+    db: Session, school_id: uuid.UUID, book_id: uuid.UUID, version_id: uuid.UUID
+) -> BookFileVersion:
+    version = books_repo.get_file_version(db, school_id, book_id, version_id)
+    if version is None:
+        raise NotFoundError("La versión indicada no existe para este libro.")
+    return version
+
+
+def activate_book_file_version(
+    db: Session,
+    current: CurrentMembership,
+    book_id: uuid.UUID,
+    version_id: uuid.UUID,
+    request_id: str | None,
+) -> Book:
+    book = _require_book(db, current.school_id, book_id)
+    version = _require_file_version(db, current.school_id, book.id, version_id)
+    if not version.is_active:
+        books_repo.deactivate_all_file_versions(db, current.school_id, book.id)
+        version.is_active = True
+        _sync_active_file_onto_book(book, version)
+        identity_service.record_audit_event(
+            db,
+            school_id=current.school_id,
+            actor_id=current.membership.user_id,
+            action="book.activate_version",
+            target_type="book_file_version",
+            target_id=str(version.id),
+            request_id=request_id,
+        )
+        db.commit()
+        db.refresh(book)
+    return book
+
+
+def deactivate_book_file_version(
+    db: Session,
+    current: CurrentMembership,
+    book_id: uuid.UUID,
+    version_id: uuid.UUID,
+    request_id: str | None,
+) -> Book:
+    """Deja al libro sin archivo legible si la versión desactivada era la activa
+    (sección nueva): es una decisión deliberada del staff, no un error — el
+    catálogo sigue mostrando el libro, pero `get_book_content` vuelve a responder
+    "todavía no tiene un archivo digital cargado" hasta que se active otra."""
+    book = _require_book(db, current.school_id, book_id)
+    version = _require_file_version(db, current.school_id, book.id, version_id)
+    if version.is_active:
+        version.is_active = False
+        _clear_active_file_on_book(book)
+        identity_service.record_audit_event(
+            db,
+            school_id=current.school_id,
+            actor_id=current.membership.user_id,
+            action="book.deactivate_version",
+            target_type="book_file_version",
+            target_id=str(version.id),
+            request_id=request_id,
+        )
+        db.commit()
+        db.refresh(book)
+    return book
+
+
+def get_book_content(
     db: Session,
     settings: Settings,
     current: CurrentMembership,
     user_id: uuid.UUID,
     book_id: uuid.UUID,
-) -> tuple[Book, str | None, bytes | None]:
+) -> tuple[Book, bytes]:
+    """Siempre devuelve los bytes del archivo (nunca una URL firmada): el único
+    camino para leer un libro es este endpoint con JWT vigente, no un enlace
+    compartible fuera de sesión (ver books/router.py::get_book_content)."""
     book = _require_book(db, current.school_id, book_id)
     require_book_purchase_access(db, current, user_id, book)
     if book.file_storage_key is None:
         raise NotFoundError("Este libro todavía no tiene un archivo digital cargado.")
 
-    storage = get_storage(settings)
-    url = storage.download_url(book.file_storage_key)
-    if url is not None:
-        return book, url, None
-    return book, None, storage.read(book.file_storage_key)
-
-
-def base64_encode(content: bytes) -> str:
-    return base64.b64encode(content).decode("ascii")
+    return book, get_storage(settings).read(book.file_storage_key)
 
 
 def list_my_books(db: Session, current: CurrentMembership, user_id: uuid.UUID) -> list[Book]:

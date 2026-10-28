@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { apiClient } from "../lib/apiClient";
 import type { Book } from "../lib/types";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
-import { downloadBook } from "../lib/download";
 
 // "Mi biblioteca" (módulo nuevo): libros con una compra "paid" del usuario
 // actual (o de un alumno que tiene vinculado, si es tutor) — ver GET /me/books.
@@ -41,13 +40,12 @@ export function MyBooksPage() {
               </Link>
               {book.author && <p className="text-sm text-slate-500">{book.author}</p>}
             </div>
-            <button
-              type="button"
-              onClick={() => downloadBook(book.id)}
+            <Link
+              to={`/books/${book.id}/read`}
               className="focus-ring rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
             >
-              Leer / descargar
-            </button>
+              Leer ahora
+            </Link>
           </li>
         ))}
       </ul>

@@ -302,6 +302,16 @@ export interface Book {
   owned: boolean;
 }
 
+export interface BookFileVersion {
+  id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  is_active: boolean;
+  uploaded_by_user_id: string | null;
+  created_at: string;
+}
+
 export interface BookPurchase {
   id: string;
   book_id: string;

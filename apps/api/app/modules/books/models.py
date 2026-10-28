@@ -42,6 +42,30 @@ class Book(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
     file_storage_key: Mapped[str | None] = mapped_column(nullable=True)
 
 
+class BookFileVersion(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
+    """Historial de archivos subidos para un libro (sección nueva: gestión de
+    versiones). A lo sumo una fila por libro tiene `is_active=True` — esa es la
+    que se copia a `Book.file_*` (ver `books/service.py::_sync_book_active_file`)
+    para que `get_book_content`/`BookOut` sigan leyendo de esas columnas sin
+    cambios. Desactivar la versión activa sin activar otra deja al libro sin
+    archivo legible (mismo estado que antes de la primera subida) — las
+    versiones nunca se borran, solo se activan/desactivan."""
+
+    __tablename__ = "book_file_versions"
+
+    book_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("books.id"), nullable=False, index=True
+    )
+    filename: Mapped[str] = mapped_column(nullable=False)
+    content_type: Mapped[str] = mapped_column(nullable=False)
+    size_bytes: Mapped[int] = mapped_column(nullable=False)
+    storage_key: Mapped[str] = mapped_column(nullable=False)
+    is_active: Mapped[bool] = mapped_column(nullable=False, default=False)
+    uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+
+
 class BookPurchase(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
     """Un intento/registro de compra. `method="colecturia"` se crea directamente
     en `status="paid"` (el admin ya cobró en caja, sección nueva, sin paso de

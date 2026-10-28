@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from "pdfjs-dist";
-import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { getDocument, type PDFDocumentProxy } from "pdfjs-dist";
+import "../lib/pdfWorker";
 import { apiClient } from "../lib/apiClient";
 import { downloadFile, getFileBlobUrl } from "../lib/download";
 import type { FileNote } from "../lib/types";
 import { ErrorState, LoadingState } from "./States";
-
-GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 interface Props {
   fileId: string;

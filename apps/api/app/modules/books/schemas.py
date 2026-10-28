@@ -38,14 +38,15 @@ class BookOut(BaseModel):
     owned: bool = False
 
 
-class BookDownloadOut(BaseModel):
-    """Misma forma que `files.FileDownloadOut` (sección 5/9): `url` firmada en
-    cloud, `content_base64` solo en local (ver books/storage vía files.storage)."""
-
-    url: str | None = None
-    content_base64: str | None = None
+class BookFileVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
     filename: str
     content_type: str
+    size_bytes: int
+    is_active: bool
+    uploaded_by_user_id: uuid.UUID | None
+    created_at: datetime
 
 
 class BookPurchaseOut(BaseModel):
