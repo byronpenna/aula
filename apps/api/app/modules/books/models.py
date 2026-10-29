@@ -12,7 +12,7 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import ForeignKey, Numeric, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, SchoolScopedMixin, TimestampMixin, UUIDPKMixin
@@ -64,6 +64,38 @@ class BookFileVersion(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
     uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
+
+
+class BookAnnotation(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
+    """Notas y resaltados personales de quien lee un libro (sección nueva). Cada
+    fila referencia exactamente un esquema de ubicación según el formato del
+    archivo activo al momento de crearla — PDF: `page_number` + `rects` (uno o
+    más recuadros de la selección de texto, fracciones 0..1 del tamaño
+    renderizado de esa página); EPUB: `cfi_range` (epub.js resuelve solo a qué
+    posición del libro corresponde). Nunca ambos — se valida en el service.
+
+    `is_shared=False` por defecto (privada del autor, como subrayar tu propio
+    libro); si se activa, cualquier otro usuario con acceso de compra al mismo
+    libro (ver `require_book_purchase_access`) también la ve — igual criterio
+    de acceso que el contenido del libro, nunca más amplio."""
+
+    __tablename__ = "book_annotations"
+
+    book_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("books.id"), nullable=False, index=True
+    )
+    author_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(nullable=False)  # "note" | "highlight"
+    color: Mapped[str | None] = mapped_column(nullable=True)  # solo highlights
+    body: Mapped[str | None] = mapped_column(nullable=True)  # requerido en notas
+    is_shared: Mapped[bool] = mapped_column(nullable=False, default=False)
+    page_number: Mapped[int | None] = mapped_column(nullable=True)
+    x: Mapped[float | None] = mapped_column(nullable=True)
+    y: Mapped[float | None] = mapped_column(nullable=True)
+    rects: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    cfi_range: Mapped[str | None] = mapped_column(nullable=True)
 
 
 class BookPurchase(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):

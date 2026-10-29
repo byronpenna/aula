@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { apiClient } from "../lib/apiClient";
 import { useAuth } from "../context/AuthContext";
 import type { Book } from "../lib/types";
+import { getShowAnnotations, setShowAnnotations } from "../lib/annotationPrefs";
 import { ErrorState, LoadingState } from "../components/States";
 import { BookPdfReader } from "../components/BookPdfReader";
 import { BookEpubReader } from "../components/BookEpubReader";
@@ -17,6 +19,15 @@ import { BookEpubReader } from "../components/BookEpubReader";
 export function BookReaderPage() {
   const { bookId } = useParams<{ bookId: string }>();
   const { me, isInitializing } = useAuth();
+  const [showAnnotations, setShowAnnotationsState] = useState(getShowAnnotations);
+
+  function toggleAnnotations() {
+    setShowAnnotationsState((prev) => {
+      const next = !prev;
+      setShowAnnotations(next);
+      return next;
+    });
+  }
 
   const bookQuery = useQuery<Book>({
     queryKey: ["books", bookId],
@@ -59,7 +70,13 @@ export function BookReaderPage() {
         <p className="min-w-0 flex-1 truncate text-center text-sm font-medium sm:text-left">
           {book?.title ?? "Leyendo…"}
         </p>
-        <span className="w-14 shrink-0" aria-hidden="true" />
+        <button
+          type="button"
+          onClick={toggleAnnotations}
+          className="focus-ring shrink-0 rounded px-2 py-1 text-xs hover:bg-slate-800 sm:text-sm"
+        >
+          {showAnnotations ? "Ocultar anotaciones" : "Mostrar anotaciones"}
+        </button>
       </header>
 
       <div className="min-h-0 flex-1">
@@ -79,9 +96,9 @@ export function BookReaderPage() {
         )}
         {!isLoading && !error && book && content && bookId && (
           book.file_content_type === "application/epub+zip" ? (
-            <BookEpubReader bookId={bookId} data={content} />
+            <BookEpubReader bookId={bookId} data={content} showAnnotations={showAnnotations} />
           ) : (
-            <BookPdfReader bookId={bookId} data={content} />
+            <BookPdfReader bookId={bookId} data={content} showAnnotations={showAnnotations} />
           )
         )}
       </div>

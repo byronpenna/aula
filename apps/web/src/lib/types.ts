@@ -312,6 +312,35 @@ export interface BookFileVersion {
   created_at: string;
 }
 
+export interface BookAnnotationRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// Una anotación nace siempre de una selección de texto: en PDF trae
+// `page_number`+`rects` (uno por línea seleccionada); en EPUB trae `cfi_range`
+// (epub.js resuelve solo a qué posición corresponde) — nunca ambos esquemas a
+// la vez (ver books/service.py::create_book_annotation).
+export interface BookAnnotation {
+  id: string;
+  book_id: string;
+  author_user_id: string;
+  author_name: string;
+  is_mine: boolean;
+  kind: "note" | "highlight";
+  body: string | null;
+  color: string | null;
+  is_shared: boolean;
+  page_number: number | null;
+  x: number | null;
+  y: number | null;
+  rects: BookAnnotationRect[] | null;
+  cfi_range: string | null;
+  created_at: string;
+}
+
 export interface BookPurchase {
   id: string;
   book_id: string;

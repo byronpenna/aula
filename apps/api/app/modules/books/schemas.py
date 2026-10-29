@@ -49,6 +49,56 @@ class BookFileVersionOut(BaseModel):
     created_at: datetime
 
 
+class BookAnnotationRect(BaseModel):
+    """Un recuadro de la capa de texto seleccionada en PDF, en fracciones 0..1
+    del tamaño renderizado de esa página (una selección puede abarcar varias
+    líneas → varios recuadros)."""
+
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+class BookAnnotationCreate(BaseModel):
+    kind: str  # "note" | "highlight"
+    body: str | None = None
+    color: str | None = None
+    is_shared: bool = False
+    # PDF: ambos requeridos. EPUB: ninguno (se usa cfi_range en su lugar).
+    page_number: int | None = None
+    rects: list[BookAnnotationRect] | None = None
+    # EPUB: requerido. PDF: debe quedar vacío.
+    cfi_range: str | None = None
+
+
+class BookAnnotationUpdate(BaseModel):
+    body: str | None = None
+    color: str | None = None
+    is_shared: bool | None = None
+
+
+class BookAnnotationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    book_id: uuid.UUID
+    author_user_id: uuid.UUID
+    author_name: str = ""
+    # Solo true cuando el autor es quien consulta — controla si el frontend
+    # muestra controles de editar/eliminar/compartir sobre esta fila.
+    is_mine: bool = False
+    kind: str
+    body: str | None
+    color: str | None
+    is_shared: bool
+    page_number: int | None
+    x: float | None
+    y: float | None
+    rects: list[BookAnnotationRect] | None
+    cfi_range: str | None
+    created_at: datetime
+
+
 class BookPurchaseOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID

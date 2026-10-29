@@ -1,0 +1,62 @@
+/* Capa de texto seleccionable sobre el canvas del PDF (sección nueva:
+   anotaciones) — extraído y recortado de la hoja de estilos oficial de
+   pdfjs-dist (`web/pdf_viewer.css`, regla `.textLayer`) en vez de importarla
+   completa: esa hoja trae ~6500 líneas de estilos de la interfaz del visor
+   oficial (barra de herramientas, editor de anotaciones, impresión) que no
+   usamos aquí, y define varias reglas sobre `:root` que preferimos no cargar
+   globalmente. Solo se usa junto con `pdfjs-dist`'s `TextLayer` (clase
+   standalone, no el visor completo), que posiciona cada <span> con left/top en
+   porcentaje y la variable --font-height inline — ver BookPdfReader.tsx. */
+
+.textLayer {
+  --total-scale-factor: 1;
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  text-align: initial;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+}
+
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.textLayer .markedContent {
+  display: contents;
+}
+
+.textLayer span[role="img"] {
+  user-select: none;
+  cursor: default;
+}
+
+.textLayer ::selection {
+  background: rgba(37, 99, 235, 0.35);
+}

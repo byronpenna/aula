@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.modules.books.models import Book, BookFileVersion, BookPurchase
+from app.modules.books.models import Book, BookAnnotation, BookFileVersion, BookPurchase
 
 
 def list_books(db: Session, school_id: uuid.UUID, *, include_archived: bool) -> list[Book]:
@@ -93,6 +93,40 @@ def deactivate_all_file_versions(db: Session, school_id: uuid.UUID, book_id: uui
     )
     for version in db.execute(stmt).scalars().all():
         version.is_active = False
+
+
+def list_annotations_for_reader(
+    db: Session, school_id: uuid.UUID, book_id: uuid.UUID, user_id: uuid.UUID
+) -> list[BookAnnotation]:
+    """Propias (cualquier estado) + ajenas que su autor haya compartido — nunca
+    las privadas de otra persona (ver `books/service.py::list_book_annotations`,
+    que ya garantizó el acceso de compra antes de llamar aquí)."""
+    stmt = (
+        select(BookAnnotation)
+        .where(
+            BookAnnotation.school_id == school_id,
+            BookAnnotation.book_id == book_id,
+            or_(BookAnnotation.author_user_id == user_id, BookAnnotation.is_shared.is_(True)),
+        )
+        .order_by(BookAnnotation.created_at)
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def get_own_annotation(
+    db: Session,
+    school_id: uuid.UUID,
+    book_id: uuid.UUID,
+    user_id: uuid.UUID,
+    annotation_id: uuid.UUID,
+) -> BookAnnotation | None:
+    stmt = select(BookAnnotation).where(
+        BookAnnotation.id == annotation_id,
+        BookAnnotation.school_id == school_id,
+        BookAnnotation.book_id == book_id,
+        BookAnnotation.author_user_id == user_id,
+    )
+    return db.execute(stmt).scalar_one_or_none()
 
 
 def list_paid_books_for_student(

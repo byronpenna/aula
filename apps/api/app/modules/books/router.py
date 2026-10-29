@@ -16,8 +16,11 @@ from app.core.deps import (
 from app.core.permissions import BOOKS_MANAGE, BOOKS_READ
 from app.db.session import get_db
 from app.modules.books import service as books_service
-from app.modules.books.models import Book
+from app.modules.books.models import Book, BookAnnotation
 from app.modules.books.schemas import (
+    BookAnnotationCreate,
+    BookAnnotationOut,
+    BookAnnotationUpdate,
     BookCreate,
     BookFileVersionOut,
     BookOut,
@@ -220,6 +223,73 @@ def get_book_content(
             "Content-Disposition": f'inline; filename="{book.file_filename}"',
             "Cache-Control": "private, no-store",
         },
+    )
+
+
+def _annotation_out(
+    db: Session, user_id: uuid.UUID, annotation: BookAnnotation
+) -> BookAnnotationOut:
+    out = BookAnnotationOut.model_validate(annotation)
+    out.is_mine = annotation.author_user_id == user_id
+    author = identity_repo.get_user(db, annotation.author_user_id)
+    out.author_name = author.display_name if author is not None else "Usuario eliminado"
+    return out
+
+
+@router.get("/books/{book_id}/annotations", response_model=list[BookAnnotationOut])
+def list_book_annotations(
+    book_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(BOOKS_READ)),
+):
+    rows = books_service.list_book_annotations(db, current, user.id, book_id)
+    return [_annotation_out(db, user.id, a) for a in rows]
+
+
+@router.post("/books/{book_id}/annotations", response_model=BookAnnotationOut)
+def create_book_annotation(
+    book_id: uuid.UUID,
+    payload: BookAnnotationCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(BOOKS_READ)),
+):
+    annotation = books_service.create_book_annotation(
+        db, current, user.id, book_id, payload.model_dump(), request.state.request_id
+    )
+    return _annotation_out(db, user.id, annotation)
+
+
+@router.patch("/books/{book_id}/annotations/{annotation_id}", response_model=BookAnnotationOut)
+def update_book_annotation(
+    book_id: uuid.UUID,
+    annotation_id: uuid.UUID,
+    payload: BookAnnotationUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(BOOKS_READ)),
+):
+    annotation = books_service.update_book_annotation(
+        db, current, user.id, book_id, annotation_id,
+        payload.body, payload.color, payload.is_shared, request.state.request_id,
+    )
+    return _annotation_out(db, user.id, annotation)
+
+
+@router.delete("/books/{book_id}/annotations/{annotation_id}", status_code=204)
+def delete_book_annotation(
+    book_id: uuid.UUID,
+    annotation_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(BOOKS_READ)),
+):
+    books_service.delete_book_annotation(
+        db, current, user.id, book_id, annotation_id, request.state.request_id
     )
 
 

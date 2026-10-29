@@ -25,7 +25,7 @@ from app.core.deps import CurrentMembership
 from app.core.errors import ForbiddenError, NotFoundError, UnprocessableError
 from app.modules.books import repository as books_repo
 from app.modules.books import wompi_client
-from app.modules.books.models import Book, BookFileVersion, BookPurchase
+from app.modules.books.models import Book, BookAnnotation, BookFileVersion, BookPurchase
 from app.modules.files.storage import get_storage
 from app.modules.identity import repository as identity_repo
 from app.modules.identity import service as identity_service
@@ -403,6 +403,191 @@ def get_book_content(
         raise NotFoundError("Este libro todavía no tiene un archivo digital cargado.")
 
     return book, get_storage(settings).read(book.file_storage_key)
+
+
+ANNOTATION_KINDS = {"note", "highlight"}
+ANNOTATION_COLORS = {"yellow", "green", "blue", "pink"}
+
+
+def _validate_rect(rect: dict) -> None:
+    for key in ("x", "y", "width", "height"):
+        value = rect.get(key)
+        if not isinstance(value, int | float) or not (0 <= value <= 1):
+            raise UnprocessableError(
+                "Cada recuadro de resaltado debe tener x/y/width/height entre 0 y 1."
+            )
+
+
+def create_book_annotation(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    book_id: uuid.UUID,
+    payload: dict,
+    request_id: str | None,
+) -> BookAnnotation:
+    """Una anotación siempre nace de una selección de texto (sección nueva: no
+    hay notas "de punto libre" sin seleccionar nada, para no duplicar dos
+    interacciones distintas en el lector) — por eso PDF siempre requiere
+    `rects` (uno por línea de la selección) y EPUB siempre `cfi_range`, nunca
+    ambos. `x`/`y` del primer recuadro se derivan acá, solo como ancla de
+    conveniencia para que el frontend posicione el marcador/ordene la lista."""
+    book = _require_book(db, current.school_id, book_id)
+    require_book_purchase_access(db, current, user_id, book)
+
+    kind = payload.get("kind")
+    if kind not in ANNOTATION_KINDS:
+        raise UnprocessableError(
+            "kind debe ser 'note' o 'highlight'.", details={"allowed": sorted(ANNOTATION_KINDS)}
+        )
+
+    page_number = payload.get("page_number")
+    rects = payload.get("rects")
+    cfi_range = payload.get("cfi_range")
+    if cfi_range and (page_number is not None or rects):
+        raise UnprocessableError(
+            "Una anotación es de PDF (page_number + rects) o de EPUB (cfi_range), no ambos."
+        )
+
+    color = payload.get("color")
+    body = (payload.get("body") or "").strip() or None
+
+    if kind == "highlight":
+        if not color or color not in ANNOTATION_COLORS:
+            raise UnprocessableError(
+                "Un resaltado requiere un color válido.",
+                details={"allowed": sorted(ANNOTATION_COLORS)},
+            )
+    else:
+        color = None
+        if not body:
+            raise UnprocessableError("La nota no puede estar vacía.")
+
+    x = y = None
+    if cfi_range:
+        rects = None
+        page_number = None
+    else:
+        if page_number is None or page_number < 1:
+            raise UnprocessableError("page_number debe ser mayor o igual a 1.")
+        if not rects:
+            raise UnprocessableError("Se requiere al menos un recuadro de la selección (rects).")
+        for rect in rects:
+            _validate_rect(rect)
+        x, y = rects[0]["x"], rects[0]["y"]
+
+    annotation = BookAnnotation(
+        school_id=current.school_id,
+        book_id=book.id,
+        author_user_id=user_id,
+        kind=kind,
+        color=color,
+        body=body,
+        is_shared=bool(payload.get("is_shared", False)),
+        page_number=page_number,
+        x=x,
+        y=y,
+        rects=rects,
+        cfi_range=cfi_range,
+    )
+    db.add(annotation)
+    db.flush()
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="book_annotation.create",
+        target_type="book_annotation",
+        target_id=str(annotation.id),
+        request_id=request_id,
+    )
+    db.commit()
+    db.refresh(annotation)
+    return annotation
+
+
+def list_book_annotations(
+    db: Session, current: CurrentMembership, user_id: uuid.UUID, book_id: uuid.UUID
+) -> list[BookAnnotation]:
+    book = _require_book(db, current.school_id, book_id)
+    require_book_purchase_access(db, current, user_id, book)
+    return books_repo.list_annotations_for_reader(db, current.school_id, book_id, user_id)
+
+
+def update_book_annotation(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    book_id: uuid.UUID,
+    annotation_id: uuid.UUID,
+    body: str | None,
+    color: str | None,
+    is_shared: bool | None,
+    request_id: str | None,
+) -> BookAnnotation:
+    """Solo el autor puede editar la suya — nunca 403: un `annotation_id` ajeno o
+    inexistente se ve igual (404), mismo criterio que el resto del módulo."""
+    annotation = books_repo.get_own_annotation(
+        db, current.school_id, book_id, user_id, annotation_id
+    )
+    if annotation is None:
+        raise NotFoundError("La anotación indicada no existe.")
+
+    if body is not None:
+        clean_body = body.strip()
+        if annotation.kind == "note" and not clean_body:
+            raise UnprocessableError("La nota no puede estar vacía.")
+        annotation.body = clean_body or None
+    if color is not None:
+        if annotation.kind != "highlight":
+            raise UnprocessableError("Solo un resaltado puede tener color.")
+        if color not in ANNOTATION_COLORS:
+            raise UnprocessableError(
+                "Color inválido.", details={"allowed": sorted(ANNOTATION_COLORS)}
+            )
+        annotation.color = color
+    if is_shared is not None:
+        annotation.is_shared = is_shared
+
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="book_annotation.update",
+        target_type="book_annotation",
+        target_id=str(annotation.id),
+        request_id=request_id,
+    )
+    db.commit()
+    db.refresh(annotation)
+    return annotation
+
+
+def delete_book_annotation(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    book_id: uuid.UUID,
+    annotation_id: uuid.UUID,
+    request_id: str | None,
+) -> None:
+    annotation = books_repo.get_own_annotation(
+        db, current.school_id, book_id, user_id, annotation_id
+    )
+    if annotation is None:
+        raise NotFoundError("La anotación indicada no existe.")
+
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="book_annotation.delete",
+        target_type="book_annotation",
+        target_id=str(annotation.id),
+        request_id=request_id,
+    )
+    db.delete(annotation)
+    db.commit()
 
 
 def list_my_books(db: Session, current: CurrentMembership, user_id: uuid.UUID) -> list[Book]:
