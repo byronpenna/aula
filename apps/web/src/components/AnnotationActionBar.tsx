@@ -3,7 +3,10 @@ import { HIGHLIGHT_COLORS } from "../lib/bookAnnotations";
 import { ErrorState } from "./States";
 
 interface Props {
-  selectedText: string;
+  // Ausente en PDF (ahí la selección es un recuadro dibujado a mano, sin
+  // texto detrás que mostrar — ver BookPdfReader.tsx); presente en EPUB,
+  // donde sí hay una selección de texto real que citar.
+  selectedText?: string;
   isSaving: boolean;
   error?: unknown;
   onHighlight: (color: string) => void;
@@ -11,11 +14,11 @@ interface Props {
   onCancel: () => void;
 }
 
-// Barra que aparece al seleccionar texto en el lector (PDF o EPUB): elegir un
-// color para resaltar, o escribir una nota sobre esa misma selección. Vive
-// como una fila más del layout (no superpuesta) para no complicar el cálculo
-// de posición cerca de una selección que puede cruzar dos páginas (spread) o
-// vivir dentro del iframe de epub.js.
+// Barra que aparece al seleccionar texto o dibujar un recuadro en el lector
+// (PDF o EPUB): elegir un color para resaltar, o escribir una nota sobre esa
+// misma selección. Vive como una fila más del layout (no superpuesta) para no
+// complicar el cálculo de posición cerca de una selección que puede cruzar
+// dos páginas (spread) o vivir dentro del iframe de epub.js.
 export function AnnotationActionBar({ selectedText, isSaving, error, onHighlight, onSaveNote, onCancel }: Props) {
   const [composingNote, setComposingNote] = useState(false);
   const [noteBody, setNoteBody] = useState("");
@@ -23,7 +26,7 @@ export function AnnotationActionBar({ selectedText, isSaving, error, onHighlight
   if (composingNote) {
     return (
       <div className="shrink-0 space-y-2 border-t border-slate-800 bg-slate-950 p-3 text-white">
-        <p className="truncate text-xs text-slate-400">“{selectedText}”</p>
+        {selectedText && <p className="truncate text-xs text-slate-400">“{selectedText}”</p>}
         <textarea
           autoFocus
           value={noteBody}
@@ -56,7 +59,9 @@ export function AnnotationActionBar({ selectedText, isSaving, error, onHighlight
 
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-slate-800 bg-slate-950 p-3 text-white">
-      <span className="max-w-[40%] min-w-0 truncate text-xs text-slate-400">“{selectedText}”</span>
+      {selectedText && (
+        <span className="max-w-[40%] min-w-0 truncate text-xs text-slate-400">“{selectedText}”</span>
+      )}
       <span className="text-xs text-slate-400">Resaltar:</span>
       {HIGHLIGHT_COLORS.map((color) => (
         <button

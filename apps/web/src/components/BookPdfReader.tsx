@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { getDocument, TextLayer, type PDFDocumentProxy, type PDFPageProxy } from "pdfjs-dist";
+import { getDocument, type PDFDocumentProxy, type PDFPageProxy } from "pdfjs-dist";
 import "../lib/pdfWorker";
-import "./pdfTextLayer.css";
 import { getReadingProgress, setReadingProgress } from "../lib/readingProgress";
 import { SPREAD_MIN_WIDTH_PX } from "../lib/readerLayout";
 import { highlightOverlayColor } from "../lib/bookAnnotations";
 import { useBookAnnotations } from "../lib/useBookAnnotations";
 import type { BookAnnotation, BookAnnotationRect } from "../lib/types";
-import { AnnotationActionBar } from "./AnnotationActionBar";
+import { AnnotationFloatingComposer } from "./AnnotationFloatingComposer";
 import { AnnotationDetailModal } from "./AnnotationDetailModal";
 import { ErrorState, LoadingState } from "./States";
 
@@ -20,7 +19,6 @@ interface Props {
 interface PendingSelection {
   pageNumber: number;
   rects: BookAnnotationRect[];
-  text: string;
 }
 
 const SWIPE_THRESHOLD_PX = 50;
@@ -30,10 +28,17 @@ const MAX_SPREAD_PAGE_WIDTH_PX = 800;
 const MIN_ZOOM = 0.75;
 const MAX_ZOOM = 2.5;
 const ZOOM_STEP = 0.25;
+// Un arrastre más chico que esto (fracción del ancho/alto de la página) se
+// trata como un clic simple, no como "dibujó un recuadro" — ver por qué en
+// handleMouseDown/handleWindowMouseUp de PdfPage.
+const MIN_BOX_SIZE = 0.01;
 // Radio (en fracción del ancho/alto de la página) alrededor del punto de clic
-// para considerar que tocó un resaltado/nota existente — ver el porqué del
-// hit-test manual en lugar de botones superpuestos en PdfPage más abajo.
-const NOTE_HIT_PADDING = 0.01;
+// para considerar que tocó la nota existente — ver el hit-test en PdfPage.
+const NOTE_HIT_PADDING = 0.012;
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
 
 // Convención de libro físico: la página 1 va sola (portada), luego se muestran
 // en pares 2-3, 4-5, ... — así el "spread" de una página cualquiera siempre se
@@ -57,11 +62,16 @@ function getSpreadPages(page: number, numPages: number, isSpread: boolean): numb
 // (fetch autenticado en BookReaderPage), nunca por una URL — ver
 // docs/adr/0003-wompi-payments.md para el resto del alcance del módulo.
 //
-// A diferencia de la primera versión de este lector, sí expone una capa de
-// texto seleccionable (pdfjs-dist `TextLayer`, ver pdfTextLayer.css) para
-// poder resaltar/anotar texto real — decisión explícita del dueño del
-// producto que revierte el "solo canvas" original pensado como disuasivo
-// contra copiar/pegar; ese disuasivo ya no aplica a los PDFs de libros.
+// Sección nueva — cambio de enfoque deliberado: versiones anteriores
+// intentaban ofrecer selección de texto real (una capa de texto invisible
+// posicionada con una fuente aproximada, no la real incrustada en el PDF).
+// Esa técnica nunca dio una selección confiable — la fuente aproximada no
+// mide igual que la real, así que "dónde empieza/termina" una palabra para
+// el navegador no coincidía con lo que se ve, y arrastrar para seleccionar se
+// sentía roto. En vez de perseguir esa precisión imposible, resaltar/anotar
+// acá se hace dibujando un recuadro a mano sobre la página (como marcar con
+// un resaltador físico sobre una hoja escaneada): no depende de ningún texto
+// invisible, así que nunca se ve "raro".
 export function BookPdfReader({ bookId, data, showAnnotations }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const touchStartX = useRef<number | null>(null);
@@ -131,8 +141,8 @@ export function BookPdfReader({ bookId, data, showAnnotations }: Props) {
 
   // El zoom multiplica la escala de "ajustar al ancho" en vez de reemplazarla:
   // a 100% se comporta igual que antes (ajustado al contenedor), y +/- la
-  // agranda/achica desde ahí — más grande siempre hace la selección de texto
-  // más precisa, sin importar el documento.
+  // agranda/achica desde ahí — más grande siempre hace más cómodo dibujar un
+  // recuadro preciso, sin importar el documento.
   const scale =
     containerWidth > 0 && unscaledPageWidth > 0
       ? (Math.min(
@@ -153,10 +163,6 @@ export function BookPdfReader({ bookId, data, showAnnotations }: Props) {
   useEffect(() => {
     if (pdfDoc) setReadingProgress(bookId, String(pageNumber));
   }, [bookId, pdfDoc, pageNumber]);
-
-  function clearNativeSelection() {
-    window.getSelection()?.removeAllRanges();
-  }
 
   function goPrev() {
     const target = pages[0] - 1;
@@ -199,12 +205,7 @@ export function BookPdfReader({ bookId, data, showAnnotations }: Props) {
     if (!pendingSelection) return;
     annotations.create.mutate(
       { kind: "highlight", color, page_number: pendingSelection.pageNumber, rects: pendingSelection.rects },
-      {
-        onSuccess: () => {
-          setPendingSelection(null);
-          clearNativeSelection();
-        },
-      },
+      { onSuccess: () => setPendingSelection(null) },
     );
   }
 
@@ -212,12 +213,7 @@ export function BookPdfReader({ bookId, data, showAnnotations }: Props) {
     if (!pendingSelection) return;
     annotations.create.mutate(
       { kind: "note", body, page_number: pendingSelection.pageNumber, rects: pendingSelection.rects },
-      {
-        onSuccess: () => {
-          setPendingSelection(null);
-          clearNativeSelection();
-        },
-      },
+      { onSuccess: () => setPendingSelection(null) },
     );
   }
 
@@ -245,7 +241,7 @@ export function BookPdfReader({ bookId, data, showAnnotations }: Props) {
     pages.length === 2 ? `Páginas ${pages[0]}–${pages[1]} de ${numPages}` : `Página ${pages[0]} de ${numPages}`;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col select-none">
       <div
         ref={wrapRef}
         className="flex-1 overflow-auto bg-slate-800"
@@ -273,26 +269,18 @@ export function BookPdfReader({ bookId, data, showAnnotations }: Props) {
                   showAnnotations={showAnnotations}
                   onSelection={setPendingSelection}
                   onOpenAnnotation={setOpenAnnotation}
+                  pendingSelection={pendingSelection}
+                  isSavingPending={annotations.create.isPending}
+                  pendingError={annotations.create.error}
+                  onHighlightPending={handleHighlight}
+                  onSaveNotePending={handleSaveNote}
+                  onCancelPending={() => setPendingSelection(null)}
                 />
               ))}
             </div>
           </div>
         )}
       </div>
-
-      {pendingSelection && (
-        <AnnotationActionBar
-          selectedText={pendingSelection.text}
-          isSaving={annotations.create.isPending}
-          error={annotations.create.error}
-          onHighlight={handleHighlight}
-          onSaveNote={handleSaveNote}
-          onCancel={() => {
-            setPendingSelection(null);
-            clearNativeSelection();
-          }}
-        />
-      )}
 
       <div className="flex flex-wrap items-center justify-center gap-3 border-t border-slate-800 bg-slate-950 p-3 text-white">
         <button
@@ -356,6 +344,13 @@ export function BookPdfReader({ bookId, data, showAnnotations }: Props) {
   );
 }
 
+interface DraftBox {
+  startX: number;
+  startY: number;
+  curX: number;
+  curY: number;
+}
+
 interface PdfPageProps {
   pdfDoc: PDFDocumentProxy;
   pageNumber: number;
@@ -364,12 +359,19 @@ interface PdfPageProps {
   showAnnotations: boolean;
   onSelection: (selection: PendingSelection) => void;
   onOpenAnnotation: (annotation: BookAnnotation) => void;
+  pendingSelection: PendingSelection | null;
+  isSavingPending: boolean;
+  pendingError: unknown;
+  onHighlightPending: (color: string) => void;
+  onSaveNotePending: (body: string) => void;
+  onCancelPending: () => void;
 }
 
-// Una página completa (canvas rasterizado + capa de texto seleccionable +
-// superposición de resaltados/notas existentes). Cada una resuelve su propia
-// `PDFPageProxy` para poder mostrarse de forma independiente en modo spread
-// (dos instancias de este componente, una por página visible).
+// Una página completa (canvas rasterizado + superposición de resaltados/notas
+// existentes + el recuadro que se esté dibujando en este momento, si lo hay).
+// Cada una resuelve su propia `PDFPageProxy` para poder mostrarse de forma
+// independiente en modo spread (dos instancias de este componente, una por
+// página visible).
 function PdfPage({
   pdfDoc,
   pageNumber,
@@ -378,11 +380,18 @@ function PdfPage({
   showAnnotations,
   onSelection,
   onOpenAnnotation,
+  pendingSelection,
+  isSavingPending,
+  pendingError,
+  onHighlightPending,
+  onSaveNotePending,
+  onCancelPending,
 }: PdfPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const textLayerRef = useRef<HTMLDivElement>(null);
+  const drawingRef = useRef(false);
   const [page, setPage] = useState<PDFPageProxy | null>(null);
+  const [draft, setDraft] = useState<DraftBox | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -408,9 +417,9 @@ function PdfPage({
       // CSS-px — sin esto el texto se ve notoriamente borroso en cualquier
       // pantalla Retina/HiDPI (la mayoría de laptops y celulares actuales).
       // El tamaño CSS (`style.width/height`) se queda en el tamaño "lógico"
-      // de `viewport`, igual que antes, para no desalinear la capa de texto
-      // ni la superposición de resaltados (ambas usan fracciones 0..1 de ese
-      // mismo tamaño lógico).
+      // de `viewport`, igual que antes, para que la superposición de
+      // resaltados (que usa fracciones 0..1 de ese mismo tamaño lógico) no se
+      // desalinee.
       const outputScale = window.devicePixelRatio || 1;
       canvas.width = Math.floor(viewport.width * outputScale);
       canvas.height = Math.floor(viewport.height * outputScale);
@@ -429,93 +438,163 @@ function PdfPage({
     };
   }, [page, scale]);
 
-  useEffect(() => {
-    if (!page) return;
-    const container = textLayerRef.current;
-    if (!container) return;
-    container.replaceChildren();
-    let cancelled = false;
-    let layer: TextLayer | null = null;
-    (async () => {
-      const viewport = page.getViewport({ scale });
-      const textContent = await page.getTextContent();
-      if (cancelled) return;
-      layer = new TextLayer({ textContentSource: textContent, container, viewport });
-      await layer.render();
-    })();
-    return () => {
-      cancelled = true;
-      layer?.cancel();
-    };
-  }, [page, scale]);
-
-  // Los resaltados/notas existentes se dibujan como superposiciones NO
-  // interactivas (`pointer-events: none`, ver el render más abajo): si fueran
-  // botones encima del texto, interceptarían el puntero en pleno arrastre y
-  // cortarían la selección nativa justo al pasar sobre una zona ya resaltada
-  // — el motivo concreto por el que arrastrar para seleccionar se sentía
-  // poco confiable. En vez de eso, un clic simple (sin arrastre, sin
-  // selección nueva) se interpreta acá mismo como "tocó un resaltado/nota" si
-  // cae dentro de alguno de sus recuadros.
-  function handleMouseUp(event: React.MouseEvent) {
-    const container = containerRef.current;
-    if (!container) return;
-    const containerRect = container.getBoundingClientRect();
-
-    const selection = window.getSelection();
-    const text = selection?.toString().trim() ?? "";
-    if (selection && !selection.isCollapsed && text) {
-      const range = selection.getRangeAt(0);
-      if (container.contains(range.commonAncestorContainer)) {
-        const rects: BookAnnotationRect[] = Array.from(range.getClientRects())
-          .filter((r) => r.width > 0 && r.height > 0)
-          .map((r) => ({
-            x: (r.left - containerRect.left) / containerRect.width,
-            y: (r.top - containerRect.top) / containerRect.height,
-            width: r.width / containerRect.width,
-            height: r.height / containerRect.height,
-          }));
-        if (rects.length > 0) {
-          onSelection({ pageNumber, rects, text });
-          return;
-        }
-      }
-    }
-
-    const fx = (event.clientX - containerRect.left) / containerRect.width;
-    const fy = (event.clientY - containerRect.top) / containerRect.height;
-    const hitHighlight = highlights.find((a) =>
-      (a.rects ?? []).some((r) => fx >= r.x && fx <= r.x + r.width && fy >= r.y && fy <= r.y + r.height),
-    );
-    if (hitHighlight) {
-      onOpenAnnotation(hitHighlight);
-      return;
-    }
-    const hitNote = notes.find((a) => {
-      const anchor = a.rects?.[0];
-      if (!anchor) return false;
-      const cx = anchor.x + anchor.width;
-      const cy = anchor.y + anchor.height / 2;
-      return Math.abs(fx - cx) <= NOTE_HIT_PADDING && Math.abs(fy - cy) <= NOTE_HIT_PADDING;
-    });
-    if (hitNote) onOpenAnnotation(hitNote);
-  }
-
   const highlights = annotations.filter((a) => a.kind === "highlight" && a.page_number === pageNumber);
   const notes = annotations.filter((a) => a.kind === "note" && a.page_number === pageNumber);
 
+  // Resaltar/anotar se hace dibujando un recuadro a mano, no seleccionando
+  // texto (ver el porqué en el comentario grande de BookPdfReader.tsx más
+  // arriba): mousedown marca la esquina de inicio, mousemove la va
+  // agrandando, y mouseup la cierra — o, si el arrastre fue mínimo (un clic
+  // simple), se interpreta como "tocó un resaltado/nota existente" en vez de
+  // crear uno nuevo.
+  function handleMouseDown(event: React.MouseEvent) {
+    if (event.button !== 0) return;
+    // Mientras haya una selección pendiente (en cualquier página del spread,
+    // esperando que se elija color o se escriba una nota), no se empieza un
+    // recuadro nuevo encima — primero hay que guardarla o cancelarla.
+    if (pendingSelection) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const x = clamp01((event.clientX - rect.left) / rect.width);
+    const y = clamp01((event.clientY - rect.top) / rect.height);
+    drawingRef.current = true;
+    setDraft({ startX: x, startY: y, curX: x, curY: y });
+  }
+
+  // En `window`, no en el propio div, por la misma razón que antes: es muy
+  // común terminar el arrastre unos píxeles fuera del recuadro exacto de la
+  // página (cerca del margen, al scrollear durante el arrastre) y el gesto no
+  // debe perderse por eso.
+  useEffect(() => {
+    function handleWindowMouseMove(event: MouseEvent) {
+      if (!drawingRef.current) return;
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const x = clamp01((event.clientX - rect.left) / rect.width);
+      const y = clamp01((event.clientY - rect.top) / rect.height);
+      setDraft((d) => (d ? { ...d, curX: x, curY: y } : d));
+    }
+
+    function handleWindowMouseUp(event: MouseEvent) {
+      if (!drawingRef.current) return;
+      drawingRef.current = false;
+      const container = containerRef.current;
+      setDraft((current) => {
+        if (!current || !container) return null;
+        const x = Math.min(current.startX, current.curX);
+        const y = Math.min(current.startY, current.curY);
+        const width = Math.abs(current.curX - current.startX);
+        const height = Math.abs(current.curY - current.startY);
+
+        if (width < MIN_BOX_SIZE || height < MIN_BOX_SIZE) {
+          // Fue un clic, no un arrastre: ¿cayó sobre un resaltado/nota ya
+          // existente? Si no, no pasa nada (no se crea un recuadro vacío).
+          const rect = container.getBoundingClientRect();
+          const fx = clamp01((event.clientX - rect.left) / rect.width);
+          const fy = clamp01((event.clientY - rect.top) / rect.height);
+          const hitHighlight = highlights.find((a) =>
+            (a.rects ?? []).some(
+              (r) => fx >= r.x && fx <= r.x + r.width && fy >= r.y && fy <= r.y + r.height,
+            ),
+          );
+          if (hitHighlight) {
+            onOpenAnnotation(hitHighlight);
+            return null;
+          }
+          const hitNote = notes.find((a) => {
+            const anchor = a.rects?.[0];
+            if (!anchor) return false;
+            const cx = anchor.x + anchor.width / 2;
+            const cy = anchor.y + anchor.height / 2;
+            return Math.abs(fx - cx) <= NOTE_HIT_PADDING && Math.abs(fy - cy) <= NOTE_HIT_PADDING;
+          });
+          if (hitNote) onOpenAnnotation(hitNote);
+          return null;
+        }
+
+        onSelection({ pageNumber, rects: [{ x, y, width, height }] });
+        return null;
+      });
+    }
+
+    window.addEventListener("mousemove", handleWindowMouseMove);
+    window.addEventListener("mouseup", handleWindowMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleWindowMouseMove);
+      window.removeEventListener("mouseup", handleWindowMouseUp);
+    };
+  });
+
   return (
-    <div ref={containerRef} className="relative shrink-0 shadow-lg" onMouseUp={handleMouseUp}>
-      <canvas ref={canvasRef} className="block" />
-      <div ref={textLayerRef} className="textLayer" />
-      {/* pointer-events-none a propósito en ambas superposiciones: el clic para
-          abrir un resaltado/nota se resuelve por hit-test en handleMouseUp,
-          no con un elemento interactivo propio — ver el comentario ahí. */}
+    <div
+      ref={containerRef}
+      className="relative shrink-0 cursor-crosshair shadow-lg"
+      onMouseDown={handleMouseDown}
+    >
+      <canvas ref={canvasRef} className="block" onDragStart={(e) => e.preventDefault()} />
+      {draft && (
+        <div
+          className="pointer-events-none absolute z-30 rounded-sm border-2 border-dashed border-brand-500 bg-brand-500/20"
+          style={{
+            left: `${Math.min(draft.startX, draft.curX) * 100}%`,
+            top: `${Math.min(draft.startY, draft.curY) * 100}%`,
+            width: `${Math.abs(draft.curX - draft.startX) * 100}%`,
+            height: `${Math.abs(draft.curY - draft.startY) * 100}%`,
+          }}
+        />
+      )}
+      {pendingSelection?.pageNumber === pageNumber &&
+        pendingSelection.rects[0] &&
+        (() => {
+          const rect = pendingSelection.rects[0];
+          // El recuadro recién dibujado se queda marcado (no dashed, ya no se
+          // está "dibujando") mientras se elige color o se escribe la nota —
+          // así se ve qué quedó seleccionado sin tener que recordarlo. El
+          // popover se ancla debajo por defecto, o arriba si el recuadro está
+          // en la mitad inferior de la página (para no salirse por abajo); el
+          // `min(...)` en `left` evita que se salga por la derecha.
+          const anchorBelow = rect.y <= 0.6;
+          const composerStyle: React.CSSProperties = {
+            left: `min(${rect.x * 100}%, calc(100% - 300px))`,
+            ...(anchorBelow
+              ? { top: `calc(${(rect.y + rect.height) * 100}% + 8px)` }
+              : { top: `calc(${rect.y * 100}% - 8px)`, transform: "translateY(-100%)" }),
+          };
+          return (
+            <>
+              <div
+                className="pointer-events-none absolute z-30 rounded-sm border-2 border-brand-500 bg-brand-500/25"
+                style={{
+                  left: `${rect.x * 100}%`,
+                  top: `${rect.y * 100}%`,
+                  width: `${rect.width * 100}%`,
+                  height: `${rect.height * 100}%`,
+                }}
+              />
+              <AnnotationFloatingComposer
+                isSaving={isSavingPending}
+                error={pendingError}
+                onHighlight={onHighlightPending}
+                onSaveNote={onSaveNotePending}
+                onCancel={onCancelPending}
+                style={composerStyle}
+              />
+            </>
+          );
+        })()}
+      {/* pointer-events-none a propósito en ambas superposiciones: abrir un
+          resaltado/nota existente se resuelve por hit-test en
+          handleWindowMouseUp (arriba), no con un elemento interactivo
+          propio — así nunca interceptan el arrastre de un recuadro nuevo. */}
       {showAnnotations &&
-        highlights.flatMap((annotation) =>
-          (annotation.rects ?? []).map((rect, index) => (
+        highlights.map((annotation) => {
+          const rect = annotation.rects?.[0];
+          if (!rect) return null;
+          return (
             <div
-              key={`${annotation.id}-${index}`}
+              key={annotation.id}
               className="pointer-events-none absolute z-10 rounded-sm"
               style={{
                 left: `${rect.x * 100}%`,
@@ -526,8 +605,8 @@ function PdfPage({
                 mixBlendMode: "multiply",
               }}
             />
-          )),
-        )}
+          );
+        })}
       {showAnnotations &&
         notes.map((annotation) => {
           const anchor = annotation.rects?.[0];
@@ -535,19 +614,10 @@ function PdfPage({
           return (
             <div
               key={annotation.id}
-              className="pointer-events-none absolute z-20 flex items-center justify-center rounded-full bg-amber-400 text-[9px] font-bold text-amber-950 shadow"
+              className="pointer-events-none absolute z-20 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-amber-400 text-[10px] font-bold text-amber-950 shadow"
               style={{
-                left: `${(anchor.x + anchor.width) * 100}%`,
-                top: `${anchor.y * 100}%`,
-                // Alto igual al de la línea anotada (nunca un tamaño fijo): en
-                // documentos con interlineado ajustado, un marcador de tamaño
-                // fijo se mete en la línea de arriba — ver verificación manual.
-                height: `${anchor.height * 100}%`,
-                width: `${anchor.height * 100}%`,
-                minHeight: "14px",
-                minWidth: "14px",
-                maxHeight: "20px",
-                maxWidth: "20px",
+                left: `${(anchor.x + anchor.width / 2) * 100}%`,
+                top: `${(anchor.y + anchor.height / 2) * 100}%`,
               }}
             >
               ✎
