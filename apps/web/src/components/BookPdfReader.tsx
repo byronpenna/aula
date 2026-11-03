@@ -254,19 +254,28 @@ export function BookPdfReader({ bookId, data, showAnnotations }: Props) {
         onContextMenu={(e) => e.preventDefault()}
       >
         {scale > 0 && (
-          <div className="flex min-h-full items-center justify-center gap-4 p-4">
-            {pages.map((page) => (
-              <PdfPage
-                key={page}
-                pdfDoc={pdfDoc}
-                pageNumber={page}
-                scale={scale}
-                annotations={annotations.data ?? []}
-                showAnnotations={showAnnotations}
-                onSelection={setPendingSelection}
-                onOpenAnnotation={setOpenAnnotation}
-              />
-            ))}
+          // `min-h-full` + `items-center`/`justify-center` centraba la página,
+          // pero en un contenedor con scroll eso es un bug clásico de
+          // flexbox: cuando el contenido crece más que el contenedor (página
+          // alta, o con zoom), el centrado "recorta" el extremo opuesto al
+          // que empuja y ese borde deja de alcanzarse haciendo scroll. El
+          // padre solo es `flex` (sin alinear nada) y el margen `m-auto` del
+          // hijo sí centra quien cabe, y si no cabe cede a 0 sin cortar nada.
+          <div className="flex min-h-full">
+            <div className="m-auto flex gap-4 p-4">
+              {pages.map((page) => (
+                <PdfPage
+                  key={page}
+                  pdfDoc={pdfDoc}
+                  pageNumber={page}
+                  scale={scale}
+                  annotations={annotations.data ?? []}
+                  showAnnotations={showAnnotations}
+                  onSelection={setPendingSelection}
+                  onOpenAnnotation={setOpenAnnotation}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>
