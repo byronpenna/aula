@@ -25,8 +25,15 @@ interface PendingSelection {
 
 const SWIPE_THRESHOLD_PX = 50;
 const PAGE_GAP_PX = 16;
-const MAX_SINGLE_PAGE_WIDTH_PX = 900;
-const MAX_SPREAD_PAGE_WIDTH_PX = 700;
+const MAX_SINGLE_PAGE_WIDTH_PX = 1000;
+const MAX_SPREAD_PAGE_WIDTH_PX = 800;
+const MIN_ZOOM = 0.75;
+const MAX_ZOOM = 2.5;
+const ZOOM_STEP = 0.25;
+// Radio (en fracción del ancho/alto de la página) alrededor del punto de clic
+// para considerar que tocó un resaltado/nota existente — ver el porqué del
+// hit-test manual en lugar de botones superpuestos en PdfPage más abajo.
+const NOTE_HIT_PADDING = 0.01;
 
 // Convención de libro físico: la página 1 va sola (portada), luego se muestran
 // en pares 2-3, 4-5, ... — así el "spread" de una página cualquiera siempre se
@@ -66,6 +73,7 @@ export function BookPdfReader({ bookId, data, showAnnotations }: Props) {
   const [unscaledPageWidth, setUnscaledPageWidth] = useState(0);
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
   const [openAnnotation, setOpenAnnotation] = useState<BookAnnotation | null>(null);
+  const [zoom, setZoom] = useState(1);
 
   const annotations = useBookAnnotations(bookId);
 
@@ -121,13 +129,26 @@ export function BookPdfReader({ bookId, data, showAnnotations }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pdfDoc, pages[0]]);
 
+  // El zoom multiplica la escala de "ajustar al ancho" en vez de reemplazarla:
+  // a 100% se comporta igual que antes (ajustado al contenedor), y +/- la
+  // agranda/achica desde ahí — más grande siempre hace la selección de texto
+  // más precisa, sin importar el documento.
   const scale =
     containerWidth > 0 && unscaledPageWidth > 0
-      ? Math.min(
+      ? (Math.min(
           (containerWidth - (pages.length - 1) * PAGE_GAP_PX) / pages.length,
           pages.length === 2 ? MAX_SPREAD_PAGE_WIDTH_PX : MAX_SINGLE_PAGE_WIDTH_PX,
-        ) / unscaledPageWidth
+        ) /
+          unscaledPageWidth) *
+        zoom
       : 0;
+
+  function zoomOut() {
+    setZoom((z) => Math.max(MIN_ZOOM, Math.round((z - ZOOM_STEP) * 100) / 100));
+  }
+  function zoomIn() {
+    setZoom((z) => Math.min(MAX_ZOOM, Math.round((z + ZOOM_STEP) * 100) / 100));
+  }
 
   useEffect(() => {
     if (pdfDoc) setReadingProgress(bookId, String(pageNumber));
@@ -166,6 +187,9 @@ export function BookPdfReader({ bookId, data, showAnnotations }: Props) {
     const endX = e.changedTouches[0]?.clientX;
     touchStartX.current = null;
     if (startX == null || endX == null) return;
+    // Con zoom > 100% el swipe horizontal sirve para desplazarse por la
+    // página ampliada, no para pasar de página — si no, chocan.
+    if (zoom > 1) return;
     const delta = endX - startX;
     if (delta > SWIPE_THRESHOLD_PX) goPrev();
     else if (delta < -SWIPE_THRESHOLD_PX) goNext();
@@ -261,7 +285,27 @@ export function BookPdfReader({ bookId, data, showAnnotations }: Props) {
         />
       )}
 
-      <div className="flex items-center justify-center gap-4 border-t border-slate-800 bg-slate-950 p-3 text-white">
+      <div className="flex flex-wrap items-center justify-center gap-3 border-t border-slate-800 bg-slate-950 p-3 text-white">
+        <button
+          type="button"
+          onClick={zoomOut}
+          disabled={zoom <= MIN_ZOOM}
+          className="focus-ring rounded-md border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-30"
+          aria-label="Alejar"
+        >
+          A−
+        </button>
+        <span className="text-xs text-slate-400">{Math.round(zoom * 100)}%</span>
+        <button
+          type="button"
+          onClick={zoomIn}
+          disabled={zoom >= MAX_ZOOM}
+          className="focus-ring rounded-md border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-30"
+          aria-label="Acercar"
+        >
+          A+
+        </button>
+        <span className="mx-1 h-5 w-px bg-slate-700" aria-hidden="true" />
         <button
           type="button"
           onClick={goPrev}
@@ -396,25 +440,56 @@ function PdfPage({
     };
   }, [page, scale]);
 
-  function handleMouseUp() {
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed) return;
-    const text = selection.toString().trim();
-    if (!text) return;
-    const range = selection.getRangeAt(0);
+  // Los resaltados/notas existentes se dibujan como superposiciones NO
+  // interactivas (`pointer-events: none`, ver el render más abajo): si fueran
+  // botones encima del texto, interceptarían el puntero en pleno arrastre y
+  // cortarían la selección nativa justo al pasar sobre una zona ya resaltada
+  // — el motivo concreto por el que arrastrar para seleccionar se sentía
+  // poco confiable. En vez de eso, un clic simple (sin arrastre, sin
+  // selección nueva) se interpreta acá mismo como "tocó un resaltado/nota" si
+  // cae dentro de alguno de sus recuadros.
+  function handleMouseUp(event: React.MouseEvent) {
     const container = containerRef.current;
-    if (!container || !container.contains(range.commonAncestorContainer)) return;
+    if (!container) return;
     const containerRect = container.getBoundingClientRect();
-    const rects: BookAnnotationRect[] = Array.from(range.getClientRects())
-      .filter((r) => r.width > 0 && r.height > 0)
-      .map((r) => ({
-        x: (r.left - containerRect.left) / containerRect.width,
-        y: (r.top - containerRect.top) / containerRect.height,
-        width: r.width / containerRect.width,
-        height: r.height / containerRect.height,
-      }));
-    if (rects.length === 0) return;
-    onSelection({ pageNumber, rects, text });
+
+    const selection = window.getSelection();
+    const text = selection?.toString().trim() ?? "";
+    if (selection && !selection.isCollapsed && text) {
+      const range = selection.getRangeAt(0);
+      if (container.contains(range.commonAncestorContainer)) {
+        const rects: BookAnnotationRect[] = Array.from(range.getClientRects())
+          .filter((r) => r.width > 0 && r.height > 0)
+          .map((r) => ({
+            x: (r.left - containerRect.left) / containerRect.width,
+            y: (r.top - containerRect.top) / containerRect.height,
+            width: r.width / containerRect.width,
+            height: r.height / containerRect.height,
+          }));
+        if (rects.length > 0) {
+          onSelection({ pageNumber, rects, text });
+          return;
+        }
+      }
+    }
+
+    const fx = (event.clientX - containerRect.left) / containerRect.width;
+    const fy = (event.clientY - containerRect.top) / containerRect.height;
+    const hitHighlight = highlights.find((a) =>
+      (a.rects ?? []).some((r) => fx >= r.x && fx <= r.x + r.width && fy >= r.y && fy <= r.y + r.height),
+    );
+    if (hitHighlight) {
+      onOpenAnnotation(hitHighlight);
+      return;
+    }
+    const hitNote = notes.find((a) => {
+      const anchor = a.rects?.[0];
+      if (!anchor) return false;
+      const cx = anchor.x + anchor.width;
+      const cy = anchor.y + anchor.height / 2;
+      return Math.abs(fx - cx) <= NOTE_HIT_PADDING && Math.abs(fy - cy) <= NOTE_HIT_PADDING;
+    });
+    if (hitNote) onOpenAnnotation(hitNote);
   }
 
   const highlights = annotations.filter((a) => a.kind === "highlight" && a.page_number === pageNumber);
@@ -424,14 +499,15 @@ function PdfPage({
     <div ref={containerRef} className="relative shrink-0 shadow-lg" onMouseUp={handleMouseUp}>
       <canvas ref={canvasRef} className="block" />
       <div ref={textLayerRef} className="textLayer" />
+      {/* pointer-events-none a propósito en ambas superposiciones: el clic para
+          abrir un resaltado/nota se resuelve por hit-test en handleMouseUp,
+          no con un elemento interactivo propio — ver el comentario ahí. */}
       {showAnnotations &&
         highlights.flatMap((annotation) =>
           (annotation.rects ?? []).map((rect, index) => (
-            <button
+            <div
               key={`${annotation.id}-${index}`}
-              type="button"
-              onClick={() => onOpenAnnotation(annotation)}
-              className="absolute z-10 cursor-pointer rounded-sm border-0 p-0"
+              className="pointer-events-none absolute z-10 rounded-sm"
               style={{
                 left: `${rect.x * 100}%`,
                 top: `${rect.y * 100}%`,
@@ -440,7 +516,6 @@ function PdfPage({
                 backgroundColor: highlightOverlayColor(annotation.color),
                 mixBlendMode: "multiply",
               }}
-              aria-label="Ver resaltado"
             />
           )),
         )}
@@ -449,11 +524,9 @@ function PdfPage({
           const anchor = annotation.rects?.[0];
           if (!anchor) return null;
           return (
-            <button
+            <div
               key={annotation.id}
-              type="button"
-              onClick={() => onOpenAnnotation(annotation)}
-              className="focus-ring absolute z-20 flex items-center justify-center rounded-full border-0 bg-amber-400 text-[9px] font-bold text-amber-950 shadow"
+              className="pointer-events-none absolute z-20 flex items-center justify-center rounded-full bg-amber-400 text-[9px] font-bold text-amber-950 shadow"
               style={{
                 left: `${(anchor.x + anchor.width) * 100}%`,
                 top: `${anchor.y * 100}%`,
@@ -467,10 +540,9 @@ function PdfPage({
                 maxHeight: "20px",
                 maxWidth: "20px",
               }}
-              aria-label="Ver nota"
             >
               ✎
-            </button>
+            </div>
           );
         })}
     </div>
