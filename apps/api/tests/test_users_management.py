@@ -329,3 +329,125 @@ def test_cannot_deactivate_last_admin_when_another_admin_lacks_management_role(
     resp = client.post(f"/api/v1/users/{admin_one.id}/deactivate", headers=headers)
     assert resp.status_code == 200
     assert resp.json()["membership_status"] == "inactive"
+
+
+def test_any_user_can_set_their_own_handle(db_session, client, unique_suffix):
+    """El handle es autoservicio: no requiere USERS_MANAGE ni ningún rol en
+    particular — basta con estar autenticado (ver `PATCH /me`)."""
+    student = f.create_user(
+        db_session, display_name="Alumno", cognito_sub=f"s-{unique_suffix}"
+    )
+    db_session.commit()
+    headers = f.auth_headers(student)
+
+    resp = client.patch("/api/v1/me", headers=headers, json={"handle": f"Byron_{unique_suffix}"})
+    assert resp.status_code == 200, resp.text
+    # Normalizado: minúsculas y sin "@".
+    assert resp.json()["handle"] == f"byron_{unique_suffix}".lower()
+
+    me = client.get("/api/v1/me", headers=headers)
+    assert me.json()["handle"] == f"byron_{unique_suffix}".lower()
+
+
+def test_handle_must_be_unique_and_well_formed(db_session, client, unique_suffix):
+    user_one = f.create_user(
+        db_session, display_name="Uno", cognito_sub=f"h1-{unique_suffix}"
+    )
+    user_two = f.create_user(
+        db_session, display_name="Dos", cognito_sub=f"h2-{unique_suffix}"
+    )
+    db_session.commit()
+
+    taken = f"tomado{unique_suffix}"
+    first = client.patch("/api/v1/me", headers=f.auth_headers(user_one), json={"handle": taken})
+    assert first.status_code == 200, first.text
+
+    dup = client.patch("/api/v1/me", headers=f.auth_headers(user_two), json={"handle": taken})
+    assert dup.status_code == 409
+
+    invalid = client.patch(
+        "/api/v1/me", headers=f.auth_headers(user_two), json={"handle": "a"}
+    )
+    assert invalid.status_code == 422
+
+
+def test_admin_creates_student_profile_unlinked_and_linked(db_session, client, unique_suffix):
+    """`POST /students` crea la identidad académica (sección 7: matrícula), separada
+    de `POST /users` — admite dejarla sin cuenta vinculada (`user_id=None`, ver
+    `StudentProfile.user_id` en models.py) o vincular una cuenta existente."""
+    f.ensure_role_catalog(db_session)
+    school = f.create_school(db_session, f"Escuela {unique_suffix}")
+    admin = _admin(db_session, school, unique_suffix)
+    headers = f.auth_headers(admin, school_id=school.id)
+
+    unlinked = client.post(
+        "/api/v1/students", headers=headers, json={"student_number": f"N1-{unique_suffix}"}
+    )
+    assert unlinked.status_code == 200, unlinked.text
+    assert unlinked.json()["display_name"] is None
+
+    student_user = f.create_user(
+        db_session, display_name="Ivonne", cognito_sub=f"iv-{unique_suffix}"
+    )
+    f.add_membership(db_session, school=school, user=student_user, role_codes=["student"])
+    db_session.commit()
+
+    linked = client.post(
+        "/api/v1/students",
+        headers=headers,
+        json={"student_number": f"N2-{unique_suffix}", "user_id": str(student_user.id)},
+    )
+    assert linked.status_code == 200, linked.text
+    assert linked.json()["display_name"] == "Ivonne"
+
+
+def test_student_profile_rejects_duplicate_number_and_double_link(
+    db_session, client, unique_suffix
+):
+    f.ensure_role_catalog(db_session)
+    school = f.create_school(db_session, f"Escuela {unique_suffix}")
+    admin = _admin(db_session, school, unique_suffix)
+    headers = f.auth_headers(admin, school_id=school.id)
+    student_user = f.create_user(
+        db_session, display_name="Alumno", cognito_sub=f"dup-{unique_suffix}"
+    )
+    f.add_membership(db_session, school=school, user=student_user, role_codes=["student"])
+    db_session.commit()
+
+    number = f"N-{unique_suffix}"
+    first = client.post(
+        "/api/v1/students",
+        headers=headers,
+        json={"student_number": number, "user_id": str(student_user.id)},
+    )
+    assert first.status_code == 200, first.text
+
+    dup_number = client.post(
+        "/api/v1/students", headers=headers, json={"student_number": number}
+    )
+    assert dup_number.status_code == 409
+
+    dup_user = client.post(
+        "/api/v1/students",
+        headers=headers,
+        json={"student_number": f"other-{unique_suffix}", "user_id": str(student_user.id)},
+    )
+    assert dup_user.status_code == 409
+
+
+def test_student_profile_requires_enrollment_manage_permission(
+    db_session, client, unique_suffix
+):
+    f.ensure_role_catalog(db_session)
+    school = f.create_school(db_session, f"Escuela {unique_suffix}")
+    teacher = f.create_user(
+        db_session, display_name="Docente", cognito_sub=f"t-{unique_suffix}"
+    )
+    f.add_membership(db_session, school=school, user=teacher, role_codes=["teacher"])
+    db_session.commit()
+    headers = f.auth_headers(teacher, school_id=school.id)
+
+    resp = client.post(
+        "/api/v1/students", headers=headers, json={"student_number": f"N-{unique_suffix}"}
+    )
+    assert resp.status_code == 403

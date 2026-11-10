@@ -348,6 +348,7 @@ function UserRow({
       <td className={td}>
         <div>{user.username ?? "—"}</div>
         {user.email && <div className="text-xs text-slate-500">{user.email}</div>}
+        {user.handle && <div className="text-xs text-brand-600">@{user.handle}</div>}
       </td>
       <td className={td}>
         <div className="flex flex-wrap gap-1">

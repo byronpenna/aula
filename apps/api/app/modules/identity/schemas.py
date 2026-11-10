@@ -19,8 +19,19 @@ class MeOut(BaseModel):
     id: uuid.UUID
     display_name: str
     email: str | None
+    handle: str | None
     status: str
     memberships: list[MembershipOut]
+
+
+class MeUpdate(BaseModel):
+    """Autoservicio (`PATCH /me`): a propósito solo `handle` — el resto del perfil
+    (nombre, correo) lo sigue gestionando quien tenga USERS_MANAGE vía
+    `PATCH /users/{id}` (sección 6). Formato/normalización se validan en
+    `service.py::update_my_handle`, igual convención que el resto de la API (sin
+    `field_validator` de Pydantic en ningún otro schema de este repo)."""
+
+    handle: str | None = None
 
 
 class PermissionsOut(BaseModel):
@@ -32,6 +43,15 @@ class StudentProfileOut(BaseModel):
     id: uuid.UUID
     student_number: str
     display_name: str | None
+
+
+class StudentProfileCreate(BaseModel):
+    """`user_id` es opcional a propósito: el modelo admite un alumno matriculable
+    antes de tener cuenta (`StudentProfile.user_id` nullable, ver models.py) — se
+    puede vincular una cuenta ya existente aquí o dejarlo para más adelante."""
+
+    student_number: str
+    user_id: uuid.UUID | None = None
 
 
 class StudentDetailOut(BaseModel):
@@ -70,6 +90,7 @@ class UserOut(BaseModel):
     id: uuid.UUID
     display_name: str
     email: str | None
+    handle: str | None
     status: str
 
 
@@ -91,6 +112,7 @@ class UserListItemOut(BaseModel):
     display_name: str
     email: str | None
     username: str | None
+    handle: str | None
     membership_status: str
     role_codes: list[str]
 

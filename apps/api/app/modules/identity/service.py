@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import secrets
 import string
 import uuid
@@ -21,9 +22,14 @@ from app.modules.identity.models import (
     MembershipRole,
     Role,
     SchoolMembership,
+    StudentProfile,
     User,
 )
-from app.modules.identity.schemas import RolePermissionsUpdate, UserCreate
+from app.modules.identity.schemas import (
+    RolePermissionsUpdate,
+    StudentProfileCreate,
+    UserCreate,
+)
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -169,6 +175,34 @@ def create_user(
         )
 
     return user, membership, invitation_sent
+
+
+HANDLE_PATTERN = re.compile(r"^[a-z][a-z0-9_]{2,19}$")
+
+
+def update_my_handle(db: Session, user: User, handle: str | None) -> User:
+    """Autoservicio (`PATCH /me`): cualquier usuario, sin importar su rol, puede
+    elegir su propio `@handle` tageable (3-20 caracteres, empieza con letra, solo
+    letras/dígitos/guion bajo — evita handles solo numéricos, fáciles de confundir
+    con un ID). Se normaliza acá (no con un `field_validator` de Pydantic: ningún
+    otro schema de esta API lo usa, y la columna igual tiene `UniqueConstraint`
+    como respaldo ante condiciones de carrera)."""
+    normalized = None
+    if handle is not None:
+        normalized = handle.strip().lstrip("@").lower()
+        if not HANDLE_PATTERN.match(normalized):
+            raise UnprocessableError(
+                "El usuario debe tener 3-20 caracteres, empezar con una letra y usar "
+                "solo letras, números o guion bajo (ej. byronpena)."
+            )
+    if normalized is not None and normalized != user.handle:
+        existing = identity_repo.get_user_by_handle(db, normalized)
+        if existing is not None and existing.id != user.id:
+            raise ConflictError(f"El usuario '@{normalized}' ya está en uso.")
+    user.handle = normalized
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 def _require_membership(
@@ -332,6 +366,49 @@ def update_role_permissions(
     db.commit()
     db.refresh(role)
     return role
+
+
+def create_student_profile(
+    db: Session,
+    current: CurrentMembership,
+    payload: StudentProfileCreate,
+    request_id: str | None,
+) -> StudentProfile:
+    """Alta de la identidad académica del alumno (sección 7: matrícula), separada a
+    propósito de `create_user` — el modelo admite un `StudentProfile` sin cuenta
+    todavía (`user_id` nullable), así que esto nunca crea un `User`; si se pasa
+    `user_id`, solo vincula una cuenta que ya existe en este colegio."""
+    student_number = payload.student_number.strip()
+    if not student_number:
+        raise UnprocessableError("El número de alumno no puede estar vacío.")
+    if identity_repo.get_student_profile_by_number(db, current.school_id, student_number):
+        raise ConflictError(f"Ya existe un alumno con el número '{student_number}'.")
+
+    if payload.user_id is not None:
+        if identity_repo.get_membership(db, current.school_id, payload.user_id) is None:
+            raise NotFoundError("El usuario indicado no existe en este colegio.")
+        if identity_repo.get_student_profile_by_user(db, current.school_id, payload.user_id):
+            raise ConflictError("Ese usuario ya tiene un perfil de alumno en este colegio.")
+
+    profile = StudentProfile(
+        school_id=current.school_id,
+        student_number=student_number,
+        user_id=payload.user_id,
+    )
+    db.add(profile)
+    db.flush()
+    record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="student_profile.create",
+        target_type="student_profile",
+        target_id=str(profile.id),
+        request_id=request_id,
+    )
+    db.commit()
+    db.refresh(profile)
+    return profile
 
 
 def list_linked_students(db: Session, guardian_user_id: uuid.UUID) -> list[dict]:

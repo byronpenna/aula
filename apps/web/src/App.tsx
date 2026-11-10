@@ -11,6 +11,7 @@ import { CourseDetailPage } from "./routes/CourseDetailPage";
 import { BooksPage } from "./routes/BooksPage";
 import { BookDetailPage } from "./routes/BookDetailPage";
 import { MyBooksPage } from "./routes/MyBooksPage";
+import { MyProfilePage } from "./routes/MyProfilePage";
 import { BooksAdminPage } from "./routes/BooksAdminPage";
 import { AssignmentDetailPage } from "./routes/AssignmentDetailPage";
 import { MyStudentsPage } from "./routes/MyStudentsPage";
@@ -66,6 +67,7 @@ function App() {
               <Route path="/books" element={<BooksPage />} />
               <Route path="/books/:bookId" element={<BookDetailPage />} />
               <Route path="/mis-libros" element={<MyBooksPage />} />
+              <Route path="/perfil" element={<MyProfilePage />} />
               <Route path="/my-students" element={<MyStudentsPage />} />
               <Route element={<AdminLayout />}>
                 <Route path="/admin" element={<AdminDashboardPage />} />

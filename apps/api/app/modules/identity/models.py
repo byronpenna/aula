@@ -27,6 +27,11 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     display_name: Mapped[str] = mapped_column(nullable=False)
     email: Mapped[str | None] = mapped_column(nullable=True)
     status: Mapped[str] = mapped_column(nullable=False, default="invited")
+    # Alias público tipo "@byronpena" para poder mencionar/tagear al usuario (p. ej.
+    # en comentarios o anotaciones), sin importar su rol. Global (no por colegio,
+    # igual que el resto de `User`): lo elige voluntariamente desde su perfil, nunca
+    # se asigna automáticamente. Se guarda sin el "@" (se antepone solo al mostrarlo).
+    handle: Mapped[str | None] = mapped_column(unique=True, nullable=True)
 
 
 class LocalAuthCredential(UUIDPKMixin, TimestampMixin, Base):

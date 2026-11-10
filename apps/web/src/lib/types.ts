@@ -13,8 +13,13 @@ export interface Me {
   id: string;
   display_name: string;
   email: string | null;
+  handle: string | null;
   status: string;
   memberships: Membership[];
+}
+
+export interface MeUpdate {
+  handle: string | null;
 }
 
 export interface Permissions {
@@ -27,6 +32,7 @@ export interface UserListItem {
   display_name: string;
   email: string | null;
   username: string | null;
+  handle: string | null;
   membership_status: string;
   role_codes: string[];
 }

@@ -118,6 +118,15 @@ def get_student_profile_by_user(
     return db.execute(stmt).scalar_one_or_none()
 
 
+def get_student_profile_by_number(
+    db: Session, school_id: uuid.UUID, student_number: str
+) -> StudentProfile | None:
+    stmt = select(StudentProfile).where(
+        StudentProfile.school_id == school_id, StudentProfile.student_number == student_number
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
 def list_student_profiles(
     db: Session, school_id: uuid.UUID
 ) -> list[tuple[StudentProfile, str | None]]:
@@ -138,6 +147,11 @@ def list_student_profiles(
 
 def get_user(db: Session, user_id: uuid.UUID) -> User | None:
     return db.get(User, user_id)
+
+
+def get_user_by_handle(db: Session, handle: str) -> User | None:
+    stmt = select(User).where(User.handle == handle)
+    return db.execute(stmt).scalar_one_or_none()
 
 
 def get_membership(

@@ -31,12 +31,14 @@ from app.modules.identity.schemas import (
     LocalLoginResponse,
     MembershipOut,
     MeOut,
+    MeUpdate,
     PermissionOut,
     PermissionsOut,
     RoleAssignmentCreate,
     RoleOut,
     RolePermissionsUpdate,
     RoleUserOut,
+    StudentProfileCreate,
     StudentProfileOut,
     UserCreate,
     UserCreateOut,
@@ -56,6 +58,7 @@ def _user_list_item_out(
         display_name=user.display_name,
         email=user.email,
         username=username,
+        handle=user.handle,
         membership_status=membership.status,
         role_codes=[mr.role.code for mr in membership.roles],
     )
@@ -92,9 +95,24 @@ def read_me(user: User = Depends(get_current_user), db: Session = Depends(get_db
         id=user.id,
         display_name=user.display_name,
         email=user.email,
+        handle=user.handle,
         status=user.status,
         memberships=out_memberships,
     )
+
+
+@router.patch("/me", response_model=MeOut)
+def update_me(
+    payload: MeUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MeOut:
+    """Autoservicio: cualquier usuario autenticado, sin importar su rol, puede
+    establecer su propio `@handle` tageable (sección 6 no define un flujo para
+    esto porque antes no existía; vive aquí, no en `PATCH /users/{id}`, porque no
+    requiere USERS_MANAGE)."""
+    identity_service.update_my_handle(db, user, payload.handle)
+    return read_me(user=user, db=db)
 
 
 @router.get("/me/permissions", response_model=PermissionsOut)
@@ -125,6 +143,25 @@ def list_students(
         StudentProfileOut(id=profile.id, student_number=profile.student_number, display_name=name)
         for profile, name in rows
     ]
+
+
+@router.post("/students", response_model=StudentProfileOut)
+def create_student(
+    payload: StudentProfileCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ENROLLMENT_MANAGE)),
+) -> StudentProfileOut:
+    profile = identity_service.create_student_profile(
+        db, current, payload, request.state.request_id
+    )
+    display_name = None
+    if profile.user_id is not None:
+        user = identity_repo.get_user(db, profile.user_id)
+        display_name = user.display_name if user else None
+    return StudentProfileOut(
+        id=profile.id, student_number=profile.student_number, display_name=display_name
+    )
 
 
 @router.get("/teachers", response_model=list[UserOut])

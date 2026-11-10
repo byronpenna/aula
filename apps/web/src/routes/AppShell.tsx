@@ -79,10 +79,10 @@ export function AppShell() {
                 </select>
               </label>
             )}
-            <span>
-              {me.display_name}
+            <Link className="focus-ring rounded hover:underline" to="/perfil">
+              {me.handle ? `@${me.handle}` : me.display_name}
               {roles.length > 0 && ` · ${roles.join(", ")}`}
-            </span>
+            </Link>
             <button className="focus-ring rounded text-brand-700 underline" onClick={logout}>
               Salir
             </button>
