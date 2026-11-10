@@ -45,6 +45,11 @@ from app.modules.identity.models import (  # noqa: E402
 from app.modules.identity.service import hash_password  # noqa: E402
 from app.modules.learning.models import Assignment  # noqa: E402
 
+# Nunca se usa directo en este script, pero debe importarse para que SQLAlchemy
+# registre la tabla `files` antes de resolver la FK de
+# StudentProfile.photo_file_id (si no, falla con NoReferencedTableError).
+from app.modules.files.models import File  # noqa: E402,F401
+
 LOCAL_DEV_PASSWORD = "aula-local-dev"
 
 

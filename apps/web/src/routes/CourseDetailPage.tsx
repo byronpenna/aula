@@ -12,6 +12,8 @@ import { Breadcrumbs } from "../components/Breadcrumbs";
 import { downloadFile } from "../lib/download";
 import { formatDateTime } from "../lib/dates";
 import { DownloadIcon, EyeIcon, PencilIcon, TrashIcon } from "../components/icons";
+import { ResourceTypeBadge } from "../components/ResourceTypeBadge";
+import { getResourceType, RESOURCE_TYPE_FILTERS, RESOURCE_UPLOAD_ACCEPT } from "../lib/resourceTypes";
 import { useAuth } from "../context/AuthContext";
 
 // pdf.js pesa bastante (visor + worker); se carga bajo demanda recién al abrir
@@ -490,14 +492,16 @@ function CourseStudentsSection({ courseId }: { courseId: string }) {
   );
 }
 
-// Recursos del curso (PDFs agrupados en secciones, sección nueva): verlos alcanza
-// con acceso de lectura al curso (alumno/tutor incluidos, de ahí que este
-// componente no esté detrás de `isStaff` como CourseStudentsSection); crear,
-// renombrar o eliminar secciones y subir PDFs sí es solo de quien administra el
-// curso (reforzado en el backend por
+// Recursos del curso (archivos agrupados en secciones, cada sección puede tener
+// varios — PDF/Word/Excel/PowerPoint/imágenes/texto, ver lib/resourceTypes.ts):
+// verlos alcanza con acceso de lectura al curso (alumno/tutor incluidos, de ahí
+// que este componente no esté detrás de `isStaff` como CourseStudentsSection);
+// crear, renombrar o eliminar secciones y subir archivos sí es solo de quien
+// administra el curso (reforzado en el backend por
 // academics_service.require_course_staff_access). Eliminar una sección nunca
-// borra sus PDFs (sección 6): el backend los sigue devolviendo, agrupados en
-// `unsectioned_files` (ver learning_service.get_course_resources).
+// borra sus archivos (sección 6): el backend los sigue devolviendo, agrupados en
+// `unsectioned_files` (ver learning_service.get_course_resources). El buscador de
+// nombre/tipo filtra en memoria lo ya cargado, sin pedir nada nuevo a la API.
 function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isStaff: boolean }) {
   const queryClient = useQueryClient();
   const [isCreating, setIsCreating] = useState(false);
@@ -505,6 +509,8 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [previewFile, setPreviewFile] = useState<{ id: string; filename: string } | null>(null);
+  const [filterName, setFilterName] = useState("");
+  const [filterType, setFilterType] = useState("");
 
   const queryKey = ["courses", courseId, "resource-sections"];
   const { data, isLoading, error } = useQuery<CourseResources>({
@@ -544,6 +550,22 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
   if (!data) return null;
 
   const hasNothing = data.sections.length === 0 && data.unsectioned_files.length === 0;
+
+  // Filtro de nombre/tipo (sección nueva): puramente de presentación, filtra lo
+  // ya cargado en memoria — no agrega un endpoint ni cambia qué recursos existen.
+  const hasFilter = filterName.trim() !== "" || filterType !== "";
+  const normalizedName = filterName.trim().toLowerCase();
+  function matchesFilter(file: FileAttachment): boolean {
+    const nameMatches = !normalizedName || file.filename.toLowerCase().includes(normalizedName);
+    const typeMatches = !filterType || getResourceType(file.content_type).key === filterType;
+    return nameMatches && typeMatches;
+  }
+  const visibleSections = data.sections
+    .map((section) => ({ ...section, files: section.files.filter(matchesFilter) }))
+    .filter((section) => !hasFilter || section.files.length > 0);
+  const visibleUnsectionedFiles = data.unsectioned_files.filter(matchesFilter);
+  const noFilterMatches =
+    hasFilter && !hasNothing && visibleSections.length === 0 && visibleUnsectionedFiles.length === 0;
 
   return (
     <div>
@@ -597,14 +619,46 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
           title="Sin recursos todavía"
           description={
             isStaff
-              ? "Crea una sección y sube los primeros PDFs para que los alumnos los vean."
+              ? "Crea una sección y sube los primeros archivos para que los alumnos los vean."
               : "El docente todavía no ha subido material para este curso."
           }
         />
       )}
 
+      {!hasNothing && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <input
+            value={filterName}
+            onChange={(e) => setFilterName(e.target.value)}
+            placeholder="Buscar por nombre…"
+            aria-label="Buscar recursos por nombre"
+            className="focus-ring min-w-[12rem] flex-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+          />
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            aria-label="Filtrar por tipo de recurso"
+            className="focus-ring rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+          >
+            <option value="">Todos los tipos</option>
+            {RESOURCE_TYPE_FILTERS.map((type) => (
+              <option key={type.key} value={type.key}>
+                {type.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {noFilterMatches && (
+        <EmptyState
+          title="Sin resultados"
+          description="Ningún recurso coincide con ese nombre o tipo. Prueba con otro filtro."
+        />
+      )}
+
       <div className="space-y-4">
-        {data.sections.map((section) => (
+        {visibleSections.map((section) => (
           <section key={section.id} className="rounded-xl border border-brand-100 bg-white p-4">
             <div className="mb-2 flex items-center justify-between gap-2">
               {editingSectionId === section.id ? (
@@ -663,7 +717,7 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
                         onClick={() => {
                           if (
                             confirm(
-                              `¿Eliminar la sección "${section.name}"? Los PDFs no se borran, quedan sin sección.`,
+                              `¿Eliminar la sección "${section.name}"? Sus archivos no se borran, quedan sin sección.`,
                             )
                           ) {
                             deleteMutation.mutate(section.id);
@@ -688,13 +742,13 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
           </section>
         ))}
 
-        {data.unsectioned_files.length > 0 && (
+        {visibleUnsectionedFiles.length > 0 && (
           <section className="rounded-xl border border-dashed border-brand-200 bg-brand-50/60 p-4">
             <h3 className="mb-2 font-semibold text-brand-800">Sin sección</h3>
             <p className="mb-2 text-xs text-slate-500">
-              PDFs cuya sección fue eliminada; siguen disponibles aquí.
+              Archivos cuya sección fue eliminada; siguen disponibles aquí.
             </p>
-            <ResourceFileList files={data.unsectioned_files} onPreview={setPreviewFile} />
+            <ResourceFileList files={visibleUnsectionedFiles} onPreview={setPreviewFile} />
           </section>
         )}
       </div>
@@ -714,9 +768,11 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
   );
 }
 
-// Fila de un PDF de recursos: cualquiera con acceso al curso puede previsualizarlo
-// o descargarlo (ver PdfPreviewModal.tsx); compartida entre la lista de una
-// sección y la de "Sin sección" para no duplicar los dos botones por archivo.
+// Cuadrícula de recursos de una sección: cualquiera con acceso al curso puede
+// descargarlos, y previsualizarlos si son PDF (el visor de PdfPreviewModal.tsx
+// solo sabe renderizar ese formato; Word/Excel/PowerPoint/imágenes/texto solo
+// ofrecen descarga). Compartida entre la cuadrícula de una sección y la de
+// "Sin sección" para no duplicar las tarjetas por archivo.
 function ResourceFileList({
   files,
   onPreview,
@@ -725,38 +781,54 @@ function ResourceFileList({
   onPreview: (file: { id: string; filename: string }) => void;
 }) {
   return (
-    <ul className="space-y-1">
-      {files.map((file) => (
-        <li key={file.id} className="flex items-center justify-between gap-2 text-sm">
-          <span className="truncate text-brand-900">{file.filename}</span>
-          <div className="flex shrink-0 items-center gap-1">
-            <span className="mr-1 text-xs text-slate-400">{(file.size_bytes / 1024).toFixed(0)} KB</span>
-            <button
-              type="button"
-              onClick={() => onPreview({ id: file.id, filename: file.filename })}
-              title="Ver"
-              aria-label={`Ver ${file.filename}`}
-              className="focus-ring rounded-md border border-brand-200 p-1.5 text-brand-700 hover:bg-brand-50"
-            >
-              <EyeIcon />
-            </button>
-            <button
-              type="button"
-              onClick={() => downloadFile(file.id)}
-              title="Descargar"
-              aria-label={`Descargar ${file.filename}`}
-              className="focus-ring rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-100"
-            >
-              <DownloadIcon />
-            </button>
-          </div>
-        </li>
-      ))}
+    <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      {files.map((file) => {
+        const isPdf = file.content_type === "application/pdf";
+        return (
+          <li
+            key={file.id}
+            className="flex flex-col gap-2 rounded-lg border border-brand-100 bg-white p-3"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <ResourceTypeBadge contentType={file.content_type} />
+              <span className="shrink-0 text-xs text-slate-400">
+                {(file.size_bytes / 1024).toFixed(0)} KB
+              </span>
+            </div>
+            <p className="line-clamp-2 flex-1 text-sm text-brand-900" title={file.filename}>
+              {file.filename}
+            </p>
+            <div className="flex items-center gap-1 pt-1">
+              {isPdf && (
+                <button
+                  type="button"
+                  onClick={() => onPreview({ id: file.id, filename: file.filename })}
+                  title="Ver"
+                  aria-label={`Ver ${file.filename}`}
+                  className="focus-ring rounded-md border border-brand-200 p-1.5 text-brand-700 hover:bg-brand-50"
+                >
+                  <EyeIcon />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => downloadFile(file.id)}
+                title="Descargar"
+                aria-label={`Descargar ${file.filename}`}
+                className="focus-ring rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-100"
+              >
+                <DownloadIcon />
+              </button>
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-// Input de subida de PDFs de una sección de recursos; separado para no repetir el
+// Input de subida de recursos de una sección (PDF, Word, Excel, PowerPoint,
+// imágenes o texto — ver lib/resourceTypes.ts); separado para no repetir el
 // manejo de FormData/invalidación por cada sección renderizada.
 function ResourceUploadInput({
   sectionId,
@@ -788,7 +860,7 @@ function ResourceUploadInput({
       <input
         ref={inputRef}
         type="file"
-        accept="application/pdf"
+        accept={RESOURCE_UPLOAD_ACCEPT}
         onChange={onFileSelected}
         disabled={uploadMutation.isPending}
         className="text-sm"

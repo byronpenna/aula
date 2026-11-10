@@ -47,6 +47,10 @@ ALLOWED_CONTENT_TYPES = {
     "text/plain",
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
 
@@ -225,9 +229,11 @@ def upload_resource_file(
     content_type: str,
     content: bytes,
 ) -> File:
-    """Recursos del curso (sección nueva, no del documento base): solo PDF, y solo
-    quien administra el curso puede subirlos — igual criterio que el material de
-    tarea (ver upload_assignment_file), pero course-scoped vía
+    """Recursos del curso (sección nueva, no del documento base): cualquier tipo del
+    catálogo general (`ALLOWED_CONTENT_TYPES` — PDF, Word, Excel, PowerPoint,
+    imágenes, texto), validado por `_store`/`_validate_upload`; solo quien
+    administra el curso puede subirlos — igual criterio que el material de tarea
+    (ver upload_assignment_file), pero course-scoped vía
     academics_service.require_course_staff_access en vez de un chequeo de rol
     suelto."""
     section = learning_repo.get_resource_section(db, current.school_id, section_id)
@@ -238,11 +244,6 @@ def upload_resource_file(
         raise NotFoundError("El curso de la sección no existe en este colegio.")
     academics_service.require_course_staff_access(db, current, user_id, course)
 
-    if content_type != "application/pdf":
-        raise UnprocessableError(
-            "Solo se admiten archivos PDF en los recursos del curso.",
-            details={"allowed": ["application/pdf"]},
-        )
     return _store(
         db,
         settings,

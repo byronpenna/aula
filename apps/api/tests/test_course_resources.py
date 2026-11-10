@@ -1,8 +1,9 @@
-"""Secciones de recursos (PDFs) por curso: crear/renombrar/eliminar es acción de
+"""Secciones de recursos por curso (PDF, Word, Excel, PowerPoint, imágenes, texto —
+ver files/service.py::ALLOWED_CONTENT_TYPES): crear/renombrar/eliminar es acción de
 quien administra el curso puntual (admin/coordinación, o el docente asignado a
 ese curso — academics/service.py::require_course_staff_access); ver los recursos
 alcanza con course:read (cualquier rol con acceso al curso). Eliminar una sección
-es baja lógica: sus PDFs nunca se borran, pasan a verse como "sin sección"
+es baja lógica: sus archivos nunca se borran, pasan a verse como "sin sección"
 (learning_service.get_course_resources)."""
 
 from __future__ import annotations
@@ -198,7 +199,7 @@ def test_student_and_guardian_can_view_but_not_manage(db_session, client, unique
     assert forbidden_delete.status_code == 403
 
 
-def test_upload_rejects_non_pdf_content_type(db_session, client, unique_suffix):
+def test_upload_accepts_catalog_types_and_rejects_the_rest(db_session, client, unique_suffix):
     f.ensure_role_catalog(db_session)
     school = f.create_school(db_session, f"Escuela {unique_suffix}")
     structure = f.create_academic_structure(db_session, school)
@@ -212,8 +213,15 @@ def test_upload_rejects_non_pdf_content_type(db_session, client, unique_suffix):
         f"/api/v1/courses/{course_id}/resource-sections", headers=headers, json={"name": "Guías"}
     ).json()["id"]
 
-    resp = _upload(client, headers, section_id, filename="foto.png", content_type="image/png")
-    assert resp.status_code == 422
+    # image/png sí está en el catálogo general (ALLOWED_CONTENT_TYPES): los
+    # recursos de curso ya no son exclusivamente PDF.
+    image_resp = _upload(client, headers, section_id, filename="foto.png", content_type="image/png")
+    assert image_resp.status_code == 200, image_resp.text
+
+    rejected_resp = _upload(
+        client, headers, section_id, filename="virus.exe", content_type="application/x-msdownload"
+    )
+    assert rejected_resp.status_code == 422
 
 
 def test_create_section_rejects_empty_name_and_archived_course(db_session, client, unique_suffix):
@@ -237,3 +245,51 @@ def test_create_section_rejects_empty_name_and_archived_course(db_session, clien
         f"/api/v1/courses/{course_id}/resource-sections", headers=headers, json={"name": "Guías"}
     )
     assert archived_resp.status_code == 422
+
+
+def test_section_accepts_multiple_files_of_different_types(db_session, client, unique_suffix):
+    f.ensure_role_catalog(db_session)
+    school = f.create_school(db_session, f"Escuela {unique_suffix}")
+    structure = f.create_academic_structure(db_session, school)
+    admin = f.create_user(db_session, display_name="Admin", cognito_sub=f"a-{unique_suffix}")
+    f.add_membership(db_session, school=school, user=admin, role_codes=["school_admin"])
+    db_session.commit()
+
+    headers = f.auth_headers(admin, school_id=school.id)
+    course_id = structure["course"].id
+    section_id = client.post(
+        f"/api/v1/courses/{course_id}/resource-sections", headers=headers, json={"name": "Material"}
+    ).json()["id"]
+
+    pdf_resp = _upload(client, headers, section_id, filename="guia.pdf", content_type="application/pdf")
+    docx_resp = _upload(
+        client,
+        headers,
+        section_id,
+        filename="plan.docx",
+        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    xlsx_resp = _upload(
+        client,
+        headers,
+        section_id,
+        filename="notas.xlsx",
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    assert pdf_resp.status_code == 200, pdf_resp.text
+    assert docx_resp.status_code == 200, docx_resp.text
+    assert xlsx_resp.status_code == 200, xlsx_resp.text
+
+    rejected_resp = _upload(
+        client, headers, section_id, filename="virus.exe", content_type="application/x-msdownload"
+    )
+    assert rejected_resp.status_code == 422
+
+    resources_resp = client.get(f"/api/v1/courses/{course_id}/resource-sections", headers=headers)
+    files = resources_resp.json()["sections"][0]["files"]
+    assert len(files) == 3
+    assert {f["content_type"] for f in files} == {
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }
