@@ -19,6 +19,7 @@ import type {
 import { ErrorState, ForbiddenState, LoadingState } from "../components/States";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { StatusBadge } from "../components/StatusBadge";
+import { PencilIcon } from "../components/icons";
 
 // Panel de administración académica: pestañas horizontales dentro de un mismo
 // módulo (aula_virtual_linares_agente_v2/02-PANTALLAS-Y-FLUJOS.md §1: "la
@@ -123,6 +124,7 @@ const th = "px-2 py-1.5 text-left text-xs font-medium text-brand-700";
 const td = "px-2 py-1.5 text-sm text-slate-700";
 const rowActionBtn =
   "focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100";
+const rowIconBtn = "focus-ring rounded-md border border-slate-300 p-1 hover:bg-slate-100";
 
 function ArchiveActivateButtons({
   status,
@@ -257,9 +259,11 @@ function AcademicYearsSection() {
                     <button
                       type="button"
                       onClick={() => setEditingId(year.id)}
-                      className={rowActionBtn}
+                      title="Editar"
+                      aria-label={`Editar ${year.label}`}
+                      className={rowIconBtn}
                     >
-                      Editar
+                      <PencilIcon />
                     </button>
                     <ArchiveActivateButtons
                       status={year.status}
@@ -455,9 +459,11 @@ function GradeLevelsSection() {
                       <button
                         type="button"
                         onClick={() => setEditingId(grade.id)}
-                        className={rowActionBtn}
+                        title="Editar"
+                        aria-label={`Editar ${grade.name}`}
+                        className={rowIconBtn}
                       >
-                        Editar
+                        <PencilIcon />
                       </button>
                       <ArchiveActivateButtons
                         status={grade.status}
@@ -647,9 +653,11 @@ function SubjectsSection() {
                     <button
                       type="button"
                       onClick={() => setEditingId(subject.id)}
-                      className={rowActionBtn}
+                      title="Editar"
+                      aria-label={`Editar ${subject.name}`}
+                      className={rowIconBtn}
                     >
-                      Editar
+                      <PencilIcon />
                     </button>
                     <ArchiveActivateButtons
                       status={subject.status}
@@ -878,9 +886,11 @@ function SectionsSection() {
                     <button
                       type="button"
                       onClick={() => setEditingId(section.id)}
-                      className={rowActionBtn}
+                      title="Editar"
+                      aria-label={`Editar ${section.name}`}
+                      className={rowIconBtn}
                     >
-                      Editar
+                      <PencilIcon />
                     </button>
                     <ArchiveActivateButtons
                       status={section.status}

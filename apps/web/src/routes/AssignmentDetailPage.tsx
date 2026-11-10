@@ -6,6 +6,7 @@ import type { Assignment, CourseStudent, Submission } from "../lib/types";
 import { ErrorState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
 import { FileAttachments } from "../components/FileAttachments";
+import { ChevronDownIcon, ChevronLeftIcon } from "../components/icons";
 import { formatDateTime } from "../lib/dates";
 import { useAuth } from "../context/AuthContext";
 
@@ -131,9 +132,10 @@ export function AssignmentDetailPage() {
         {courseId && (
           <Link
             to={`/courses/${courseId}?tab=tareas`}
-            className="focus-ring mb-2 inline-block rounded text-sm text-brand-700 hover:underline"
+            className="focus-ring mb-2 inline-flex items-center gap-1 rounded text-sm text-brand-700 hover:underline"
           >
-            ← Volver al curso
+            <ChevronLeftIcon className="h-4 w-4" />
+            Volver al curso
           </Link>
         )}
         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -269,9 +271,16 @@ export function AssignmentDetailPage() {
                           onClick={() =>
                             setExpandedSubmissionId((id) => (id === s.id ? null : s.id))
                           }
-                          className="focus-ring rounded text-brand-700 underline hover:text-brand-900"
+                          title={expandedSubmissionId === s.id ? "Ocultar archivos" : "Ver archivos"}
+                          aria-label={expandedSubmissionId === s.id ? "Ocultar archivos" : "Ver archivos"}
+                          aria-expanded={expandedSubmissionId === s.id}
+                          className="focus-ring rounded-md border border-brand-200 p-1 text-brand-700 hover:bg-brand-50"
                         >
-                          {expandedSubmissionId === s.id ? "Ocultar" : "Ver"}
+                          <ChevronDownIcon
+                            className={`h-4 w-4 transition-transform ${
+                              expandedSubmissionId === s.id ? "rotate-180" : ""
+                            }`}
+                          />
                         </button>
                       </td>
                     </tr>

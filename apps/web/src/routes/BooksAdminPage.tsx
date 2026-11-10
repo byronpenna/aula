@@ -11,6 +11,7 @@ import { EmptyState, ErrorState, ForbiddenState, LoadingState } from "../compone
 import { StatusBadge } from "../components/StatusBadge";
 import { formatMoney as money } from "../lib/money";
 import { formatDateTime } from "../lib/dates";
+import { ChevronDownIcon } from "../components/icons";
 import { PURCHASE_METHOD_LABEL, PURCHASE_STATUS_CLASS, PURCHASE_STATUS_LABEL } from "../lib/books";
 
 const inputClass = "focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm";
@@ -226,17 +227,25 @@ function BookCard({
           )}
           <button
             type="button"
-            className={smallBtn}
+            className={`${smallBtn} inline-flex items-center gap-1`}
             onClick={() => setShowVersions((v) => !v)}
+            aria-expanded={showVersions}
           >
-            {showVersions ? "Ocultar versiones" : "Ver versiones"}
+            Versiones
+            <ChevronDownIcon
+              className={`h-3.5 w-3.5 transition-transform ${showVersions ? "rotate-180" : ""}`}
+            />
           </button>
           <button
             type="button"
-            className={smallBtn}
+            className={`${smallBtn} inline-flex items-center gap-1`}
             onClick={() => setShowPurchases((v) => !v)}
+            aria-expanded={showPurchases}
           >
-            {showPurchases ? "Ocultar compras" : "Ver compras"}
+            Compras
+            <ChevronDownIcon
+              className={`h-3.5 w-3.5 transition-transform ${showPurchases ? "rotate-180" : ""}`}
+            />
           </button>
           <button type="button" className={smallBtn} onClick={onArchiveToggle}>
             {book.status === "archived" ? "Reactivar" : "Archivar"}

@@ -8,6 +8,7 @@ import { getShowAnnotations, setShowAnnotations } from "../lib/annotationPrefs";
 import { ErrorState, LoadingState } from "../components/States";
 import { BookPdfReader } from "../components/BookPdfReader";
 import { BookEpubReader } from "../components/BookEpubReader";
+import { ChevronLeftIcon } from "../components/icons";
 
 // Lector inmersivo de pantalla completa (módulo nuevo, "libros"): a propósito
 // vive FUERA de <AppShell> (ver App.tsx) para no competir por espacio con el
@@ -63,9 +64,10 @@ export function BookReaderPage() {
       <header className="flex shrink-0 items-center gap-3 border-b border-slate-800 bg-slate-950 px-3 py-2 text-white">
         <Link
           to={bookId ? `/books/${bookId}` : "/books"}
-          className="focus-ring shrink-0 rounded px-2 py-1 text-sm hover:bg-slate-800"
+          className="focus-ring inline-flex shrink-0 items-center gap-1 rounded px-2 py-1 text-sm hover:bg-slate-800"
         >
-          ← Volver
+          <ChevronLeftIcon className="h-4 w-4" />
+          Volver
         </Link>
         <p className="min-w-0 flex-1 truncate text-center text-sm font-medium sm:text-left">
           {book?.title ?? "Leyendo…"}

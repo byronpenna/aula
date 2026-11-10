@@ -9,6 +9,7 @@ import type { BookAnnotation, BookAnnotationRect } from "../lib/types";
 import { AnnotationFloatingComposer } from "./AnnotationFloatingComposer";
 import { AnnotationDetailModal } from "./AnnotationDetailModal";
 import { ErrorState, LoadingState } from "./States";
+import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
 
 interface Props {
   bookId: string;
@@ -307,18 +308,20 @@ export function BookPdfReader({ bookId, data, showAnnotations }: Props) {
           type="button"
           onClick={goPrev}
           disabled={pages[0] <= 1}
-          className="focus-ring rounded-md border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-30"
+          className="focus-ring inline-flex items-center gap-1 rounded-md border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-30"
         >
-          ← Anterior
+          <ChevronLeftIcon className="h-4 w-4" />
+          Anterior
         </button>
         <span className="text-sm text-slate-300">{pageLabel}</span>
         <button
           type="button"
           onClick={goNext}
           disabled={pages[pages.length - 1] >= numPages}
-          className="focus-ring rounded-md border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-30"
+          className="focus-ring inline-flex items-center gap-1 rounded-md border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-30"
         >
-          Siguiente →
+          Siguiente
+          <ChevronRightIcon className="h-4 w-4" />
         </button>
       </div>
 

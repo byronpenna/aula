@@ -11,6 +11,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { downloadFile } from "../lib/download";
 import { formatDateTime } from "../lib/dates";
+import { DownloadIcon, EyeIcon, PencilIcon, TrashIcon } from "../components/icons";
 import { useAuth } from "../context/AuthContext";
 
 // pdf.js pesa bastante (visor + worker); se carga bajo demanda recién al abrir
@@ -334,13 +335,15 @@ function CourseNameHeader({ courseId, isStaff }: { courseId: string; isStaff: bo
             {isStaff && (
               <button
                 type="button"
-                className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+                title="Cambiar nombre"
+                aria-label="Cambiar nombre del curso"
+                className="focus-ring rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-100"
                 onClick={() => {
                   setNameDraft(course.name ?? "");
                   setIsEditing(true);
                 }}
               >
-                Cambiar nombre
+                <PencilIcon />
               </button>
             )}
           </div>
@@ -642,17 +645,21 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
                     <div className="flex shrink-0 gap-2">
                       <button
                         type="button"
-                        className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+                        title="Renombrar"
+                        aria-label={`Renombrar sección ${section.name}`}
+                        className="focus-ring rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-100"
                         onClick={() => {
                           setEditName(section.name);
                           setEditingSectionId(section.id);
                         }}
                       >
-                        Renombrar
+                        <PencilIcon />
                       </button>
                       <button
                         type="button"
-                        className="focus-ring rounded-md border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50"
+                        title="Eliminar"
+                        aria-label={`Eliminar sección ${section.name}`}
+                        className="focus-ring rounded-md border border-red-200 p-1.5 text-red-700 hover:bg-red-50"
                         onClick={() => {
                           if (
                             confirm(
@@ -663,7 +670,7 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
                           }
                         }}
                       >
-                        Eliminar
+                        <TrashIcon />
                       </button>
                     </div>
                   )}
@@ -722,21 +729,25 @@ function ResourceFileList({
       {files.map((file) => (
         <li key={file.id} className="flex items-center justify-between gap-2 text-sm">
           <span className="truncate text-brand-900">{file.filename}</span>
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="text-xs text-slate-400">{(file.size_bytes / 1024).toFixed(0)} KB</span>
+          <div className="flex shrink-0 items-center gap-1">
+            <span className="mr-1 text-xs text-slate-400">{(file.size_bytes / 1024).toFixed(0)} KB</span>
             <button
               type="button"
               onClick={() => onPreview({ id: file.id, filename: file.filename })}
-              className="focus-ring rounded-md border border-brand-200 px-2 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50"
+              title="Ver"
+              aria-label={`Ver ${file.filename}`}
+              className="focus-ring rounded-md border border-brand-200 p-1.5 text-brand-700 hover:bg-brand-50"
             >
-              Ver
+              <EyeIcon />
             </button>
             <button
               type="button"
               onClick={() => downloadFile(file.id)}
-              className="focus-ring rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100"
+              title="Descargar"
+              aria-label={`Descargar ${file.filename}`}
+              className="focus-ring rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-100"
             >
-              Descargar
+              <DownloadIcon />
             </button>
           </div>
         </li>

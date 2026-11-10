@@ -4,6 +4,7 @@ import { apiClient } from "../lib/apiClient";
 import { downloadFile } from "../lib/download";
 import type { FileAttachment } from "../lib/types";
 import { ErrorState, LoadingState } from "./States";
+import { DownloadIcon } from "./icons";
 
 interface Props {
   queryKey: QueryKey;
@@ -69,9 +70,11 @@ export function FileAttachments({
               <button
                 type="button"
                 onClick={() => downloadFile(file.id)}
-                className="focus-ring truncate rounded text-brand-700 underline hover:text-brand-900"
+                title="Descargar"
+                className="focus-ring flex min-w-0 items-center gap-1.5 rounded text-brand-700 hover:text-brand-900"
               >
-                {file.filename}
+                <DownloadIcon className="h-4 w-4 shrink-0" />
+                <span className="truncate underline">{file.filename}</span>
               </button>
               <span className="shrink-0 text-xs text-slate-400">
                 {(file.size_bytes / 1024).toFixed(0)} KB

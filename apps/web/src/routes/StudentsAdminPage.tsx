@@ -17,6 +17,7 @@ import type {
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { EmptyState, ErrorState, ForbiddenState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
+import { CloseIcon } from "../components/icons";
 
 const inputClass = "focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm";
 const th = "px-2 py-1.5 text-left text-xs font-medium text-brand-700";
@@ -529,9 +530,11 @@ function StudentGuardiansCard({ student }: { student: StudentProfile }) {
                 type="button"
                 disabled={revokeMutation.isPending}
                 onClick={() => revokeMutation.mutate(link.id)}
-                className={actionBtn}
+                title="Quitar tutor"
+                aria-label={`Quitar a ${link.guardian_display_name ?? "este tutor"}`}
+                className="focus-ring rounded-md border border-slate-300 p-1 hover:bg-slate-100 disabled:opacity-60"
               >
-                Quitar
+                <CloseIcon className="h-3.5 w-3.5" />
               </button>
             </li>
           ))}

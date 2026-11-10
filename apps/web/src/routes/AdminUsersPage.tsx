@@ -8,6 +8,7 @@ import type { Permissions, RoleSummary, UserCreateResult, UserListItem } from ".
 import { ErrorState, ForbiddenState, LoadingState } from "../components/States";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { StatusBadge } from "../components/StatusBadge";
+import { CloseIcon } from "../components/icons";
 
 const inputClass = "focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm";
 const th = "px-2 py-1.5 text-left text-xs font-medium text-brand-700";
@@ -395,10 +396,11 @@ function UserRow({
               <button
                 type="button"
                 onClick={() => revokeMutation.mutate(code)}
+                title="Quitar rol"
                 aria-label={`Quitar rol ${code}`}
                 className="focus-ring rounded-full text-brand-400 hover:text-red-600"
               >
-                ×
+                <CloseIcon className="h-3 w-3" />
               </button>
             </span>
           ))}

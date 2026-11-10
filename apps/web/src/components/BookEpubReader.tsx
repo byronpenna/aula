@@ -10,6 +10,7 @@ import type { BookAnnotation } from "../lib/types";
 import { AnnotationActionBar } from "./AnnotationActionBar";
 import { AnnotationDetailModal } from "./AnnotationDetailModal";
 import { ErrorState, LoadingState } from "./States";
+import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
 
 interface Props {
   bookId: string;
@@ -292,16 +293,18 @@ export function BookEpubReader({ bookId, data, showAnnotations }: Props) {
         <button
           type="button"
           onClick={goPrev}
-          className="focus-ring rounded-md border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800"
+          className="focus-ring inline-flex items-center gap-1 rounded-md border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800"
         >
-          ← Anterior
+          <ChevronLeftIcon className="h-4 w-4" />
+          Anterior
         </button>
         <button
           type="button"
           onClick={goNext}
-          className="focus-ring rounded-md border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800"
+          className="focus-ring inline-flex items-center gap-1 rounded-md border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800"
         >
-          Siguiente →
+          Siguiente
+          <ChevronRightIcon className="h-4 w-4" />
         </button>
       </div>
 

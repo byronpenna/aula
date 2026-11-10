@@ -6,6 +6,7 @@ import { apiClient } from "../lib/apiClient";
 import { downloadFile, getFileBlobUrl } from "../lib/download";
 import type { FileNote } from "../lib/types";
 import { ErrorState, LoadingState } from "./States";
+import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIcon, TrashIcon } from "./icons";
 
 interface Props {
   fileId: string;
@@ -152,17 +153,20 @@ export function PdfPreviewModal({ fileId, filename, isStaff, onClose }: Props) {
             <button
               type="button"
               onClick={() => downloadFile(fileId)}
-              className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+              title="Descargar"
+              aria-label={`Descargar ${filename}`}
+              className="focus-ring rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-100"
             >
-              Descargar
+              <DownloadIcon />
             </button>
             <button
               type="button"
               onClick={onClose}
+              title="Cerrar"
               aria-label="Cerrar vista previa"
-              className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+              className="focus-ring rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-100"
             >
-              Cerrar
+              <CloseIcon />
             </button>
           </div>
         </div>
@@ -183,9 +187,11 @@ export function PdfPreviewModal({ fileId, filename, isStaff, onClose }: Props) {
                   type="button"
                   onClick={() => goToPage(pageNumber - 1)}
                   disabled={pageNumber <= 1}
-                  className="focus-ring rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 disabled:opacity-40"
+                  title="Página anterior"
+                  aria-label="Página anterior"
+                  className="focus-ring rounded-md border border-slate-300 p-1 hover:bg-slate-100 disabled:opacity-40"
                 >
-                  Anterior
+                  <ChevronLeftIcon />
                 </button>
                 <span className="text-brand-700">
                   Página {pageNumber} de {numPages}
@@ -194,9 +200,11 @@ export function PdfPreviewModal({ fileId, filename, isStaff, onClose }: Props) {
                   type="button"
                   onClick={() => goToPage(pageNumber + 1)}
                   disabled={pageNumber >= numPages}
-                  className="focus-ring rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 disabled:opacity-40"
+                  title="Página siguiente"
+                  aria-label="Página siguiente"
+                  className="focus-ring rounded-md border border-slate-300 p-1 hover:bg-slate-100 disabled:opacity-40"
                 >
-                  Siguiente
+                  <ChevronRightIcon />
                 </button>
               </div>
 
@@ -302,9 +310,11 @@ export function PdfPreviewModal({ fileId, filename, isStaff, onClose }: Props) {
                           <button
                             type="button"
                             onClick={() => deleteNoteMutation.mutate(note.id)}
-                            className="focus-ring rounded text-xs text-red-700 hover:underline"
+                            title="Eliminar nota"
+                            aria-label="Eliminar nota"
+                            className="focus-ring shrink-0 rounded p-0.5 text-red-700 hover:bg-red-50"
                           >
-                            Eliminar
+                            <TrashIcon className="h-3.5 w-3.5" />
                           </button>
                         )}
                       </div>
@@ -325,9 +335,11 @@ export function PdfPreviewModal({ fileId, filename, isStaff, onClose }: Props) {
                           <button
                             type="button"
                             onClick={() => deleteNoteMutation.mutate(note.id)}
-                            className="focus-ring shrink-0 rounded text-xs text-red-700 hover:underline"
+                            title="Eliminar nota"
+                            aria-label="Eliminar nota"
+                            className="focus-ring shrink-0 rounded p-0.5 text-red-700 hover:bg-red-50"
                           >
-                            Eliminar
+                            <TrashIcon className="h-3.5 w-3.5" />
                           </button>
                         )}
                       </div>

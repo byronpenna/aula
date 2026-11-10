@@ -1,0 +1,102 @@
+import type { SVGProps } from "react";
+
+// Set mínimo de íconos de acción (descargar/ver/cerrar/expandir), trazo
+// consistente entre sí y con el ícono de menú de AppShell.tsx — no se instaló
+// ninguna librería de íconos para esto (cero dependencias nuevas, bundle
+// mínimo): son los únicos 4 símbolos que se repiten lo suficiente en tablas y
+// listas como para justificar un ícono en vez de texto (sección 4 del skill de
+// UX: "íconos coherentes y con significado, no para rellenar espacios"). Cada
+// botón que los usa sigue llevando su significado en `aria-label`/`title`, el
+// ícono nunca es la única pista.
+type IconProps = SVGProps<SVGSVGElement>;
+
+function iconProps(props: IconProps): IconProps {
+  return {
+    viewBox: "0 0 20 20",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    "aria-hidden": "true",
+    className: "h-4 w-4",
+    ...props,
+  };
+}
+
+export function DownloadIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M10 3v9m0 0 3.5-3.5M10 12l-3.5-3.5" />
+      <path d="M4 14v1.5A1.5 1.5 0 0 0 5.5 17h9a1.5 1.5 0 0 0 1.5-1.5V14" />
+    </svg>
+  );
+}
+
+export function EyeIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M2 10s2.8-5.5 8-5.5S18 10 18 10s-2.8 5.5-8 5.5S2 10 2 10Z" />
+      <circle cx="10" cy="10" r="2.25" />
+    </svg>
+  );
+}
+
+export function CloseIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M5 5l10 10M15 5 5 15" />
+    </svg>
+  );
+}
+
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M5 7.5 10 13l5-5.5" />
+    </svg>
+  );
+}
+
+export function ChevronLeftIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M12.5 5 7 10l5.5 5" />
+    </svg>
+  );
+}
+
+export function ChevronRightIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M7.5 5 13 10l-5.5 5" />
+    </svg>
+  );
+}
+
+export function PencilIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M12.3 3.7a1.8 1.8 0 0 1 2.5 0l1.5 1.5a1.8 1.8 0 0 1 0 2.5l-8.6 8.6-4.2 1 1-4.2 8.6-8.6Z" />
+      <path d="M11 5l4 4" />
+    </svg>
+  );
+}
+
+export function TrashIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M4 6h12M8 6V4.5A1.5 1.5 0 0 1 9.5 3h1A1.5 1.5 0 0 1 12 4.5V6" />
+      <path d="M5.5 6 6.2 16a1.5 1.5 0 0 0 1.5 1.4h4.6a1.5 1.5 0 0 0 1.5-1.4L14.5 6" />
+      <path d="M8.3 9v5M11.7 9v5" />
+    </svg>
+  );
+}
+
+export function PlusIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M10 4v12M4 10h12" />
+    </svg>
+  );
+}

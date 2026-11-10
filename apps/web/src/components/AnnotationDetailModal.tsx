@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { BookAnnotation } from "../lib/types";
 import { HIGHLIGHT_COLORS } from "../lib/bookAnnotations";
 import { ErrorState } from "./States";
+import { CloseIcon } from "./icons";
 
 interface Props {
   annotation: BookAnnotation;
@@ -32,8 +33,14 @@ export function AnnotationDetailModal({ annotation, onClose, onSave, onDelete, i
           <p className="text-sm font-semibold text-brand-900">
             {annotation.kind === "highlight" ? `Resaltado${colorLabel ? ` (${colorLabel})` : ""}` : "Nota"}
           </p>
-          <button type="button" onClick={onClose} className="focus-ring rounded px-2 py-1 text-sm text-slate-500 hover:bg-slate-100">
-            Cerrar
+          <button
+            type="button"
+            onClick={onClose}
+            title="Cerrar"
+            aria-label="Cerrar"
+            className="focus-ring rounded-md p-1 text-slate-500 hover:bg-slate-100"
+          >
+            <CloseIcon />
           </button>
         </div>
 
