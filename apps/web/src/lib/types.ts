@@ -160,6 +160,22 @@ export interface StudentProfile {
   id: string;
   student_number: string;
   display_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  birth_date: string | null;
+  photo_file_id: string | null;
+  user_id: string | null;
+}
+
+export interface GuardianLink {
+  id: string;
+  guardian_user_id: string;
+  guardian_display_name: string | null;
+  student_id: string;
+  relationship_label: string;
+  status: string;
+  valid_from: string;
+  valid_to: string | null;
 }
 
 export interface StudentDetail {

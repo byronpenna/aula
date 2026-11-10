@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.deps import CurrentMembership
 from app.core.errors import ForbiddenError, NotFoundError, UnprocessableError
+from app.core.permissions import ENROLLMENT_MANAGE
 from app.modules.academics import repository as academics_repo
 from app.modules.academics import service as academics_service
 from app.modules.academics.models import Course
@@ -28,6 +29,10 @@ from app.modules.identity import repository as identity_repo
 from app.modules.identity import service as identity_service
 from app.modules.learning import repository as learning_repo
 from app.modules.learning.models import Submission
+
+# Fotografía del alumno (gestión de alumnos, Administración): solo tipos de imagen,
+# a diferencia de `ALLOWED_CONTENT_TYPES` (que admite PDF/Word para adjuntos).
+STUDENT_PHOTO_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
 
 # Tipos y tamaño permitidos (sección 5): validación real de tipo/tamaño, aunque el
 # "escaneo antimalware" siga siendo el adaptador ficticio documentado en
@@ -251,6 +256,44 @@ def upload_resource_file(
     )
 
 
+def upload_student_photo(
+    db: Session,
+    settings: Settings,
+    current: CurrentMembership,
+    student_id: uuid.UUID,
+    filename: str,
+    content_type: str,
+    content: bytes,
+) -> File:
+    """Gestión de alumnos (Administración > Alumnos): solo quien administra
+    matrícula (`ENROLLMENT_MANAGE`, mismo permiso que crear/editar el perfil)
+    puede subir o reemplazar la fotografía."""
+    if ENROLLMENT_MANAGE not in current.permission_codes:
+        raise ForbiddenError("No puedes administrar la fotografía de este alumno.")
+    profile = identity_repo.get_student_profile(db, student_id)
+    if profile is None or profile.school_id != current.school_id:
+        raise NotFoundError("El alumno indicado no existe en este colegio.")
+    if content_type not in STUDENT_PHOTO_CONTENT_TYPES:
+        raise UnprocessableError(
+            "La fotografía debe ser una imagen (PNG, JPEG o WEBP).",
+            details={"allowed": sorted(STUDENT_PHOTO_CONTENT_TYPES)},
+        )
+    file = _store(
+        db,
+        settings,
+        school_id=current.school_id,
+        owner_user_id=current.membership.user_id,
+        attached_to_type="student_profile",
+        attached_to_id=student_id,
+        filename=filename,
+        content_type=content_type,
+        content=content,
+    )
+    profile.photo_file_id = file.id
+    db.commit()
+    return file
+
+
 def get_download(
     db: Session,
     settings: Settings,
@@ -282,6 +325,11 @@ def get_download(
         if course is None:
             raise NotFoundError("El curso de la sección no existe en este colegio.")
         academics_service.require_course_access(db, current, user_id, course)
+    elif file.attached_to_type == "student_profile":
+        # Solo administración/coordinación por ahora (ver `upload_student_photo`);
+        # no se expone todavía al alumno ni a su tutor.
+        if ENROLLMENT_MANAGE not in current.permission_codes:
+            raise ForbiddenError("No puedes ver esta fotografía.")
     else:  # pragma: no cover - no debería ocurrir, tipos cerrados a los de arriba
         raise NotFoundError("El archivo indicado no existe en este colegio.")
 

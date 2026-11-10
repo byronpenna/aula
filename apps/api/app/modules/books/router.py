@@ -30,6 +30,7 @@ from app.modules.books.schemas import (
     WompiCheckoutOut,
 )
 from app.modules.identity import repository as identity_repo
+from app.modules.identity import service as identity_service
 from app.modules.identity.models import User
 from app.modules.identity.schemas import StudentProfileOut
 
@@ -77,7 +78,16 @@ def list_student_candidates(
     `finance` no tiene por defecto — ver core/permissions.py)."""
     rows = identity_repo.list_student_profiles(db, current.school_id)
     return [
-        StudentProfileOut(id=profile.id, student_number=profile.student_number, display_name=name)
+        StudentProfileOut(
+            id=profile.id,
+            student_number=profile.student_number,
+            display_name=identity_service.student_display_name(profile, name),
+            first_name=profile.first_name,
+            last_name=profile.last_name,
+            birth_date=profile.birth_date,
+            photo_file_id=profile.photo_file_id,
+            user_id=profile.user_id,
+        )
         for profile, name in rows
     ]
 

@@ -118,6 +118,14 @@ class StudentProfile(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     student_number: Mapped[str] = mapped_column(nullable=False)
+    # Identidad propia del alumno, independiente de si ya tiene cuenta: `display_name`
+    # vive en `User` y puede no existir todavía (ver comentario arriba).
+    first_name: Mapped[str | None] = mapped_column(nullable=True)
+    last_name: Mapped[str | None] = mapped_column(nullable=True)
+    birth_date: Mapped[date | None] = mapped_column(nullable=True)
+    photo_file_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("files.id"), nullable=True
+    )
 
 
 class GuardianStudentLink(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):

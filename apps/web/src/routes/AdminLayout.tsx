@@ -24,6 +24,11 @@ const NAV_SECTIONS: NavSection[] = [
     items: [{ to: "/admin/academics", label: "Academia", end: false }],
   },
   {
+    title: "Alumnos",
+    requiresPermission: "enrollment:manage",
+    items: [{ to: "/admin/students", label: "Alumnos", end: false }],
+  },
+  {
     title: "Usuarios",
     requiresPermission: "users:manage",
     items: [

@@ -98,6 +98,26 @@ async def upload_resource_file(
     )
 
 
+@router.post("/students/{student_id}/photo", response_model=FileOut)
+async def upload_student_photo(
+    student_id: uuid.UUID,
+    upload: UploadFile = FastAPIFile(...),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    current: CurrentMembership = Depends(get_current_membership),
+):
+    content = await upload.read()
+    return files_service.upload_student_photo(
+        db,
+        settings,
+        current,
+        student_id,
+        upload.filename or "foto",
+        upload.content_type or "application/octet-stream",
+        content,
+    )
+
+
 @router.get("/files/{file_id}/download", response_model=FileDownloadOut)
 def download_file(
     file_id: uuid.UUID,

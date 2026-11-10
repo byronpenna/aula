@@ -15,7 +15,6 @@ import type {
   StudentProfile,
   Subject,
   Teacher,
-  UserListItem,
 } from "../lib/types";
 import { ErrorState, ForbiddenState, LoadingState } from "../components/States";
 import { Breadcrumbs } from "../components/Breadcrumbs";
@@ -1342,80 +1341,6 @@ const enrollmentSchema = z.object({
 });
 type EnrollmentForm = z.infer<typeof enrollmentSchema>;
 
-const studentProfileSchema = z.object({
-  student_number: z.string().min(1, "Requerido."),
-  user_id: z.string().optional(),
-});
-type StudentProfileForm = z.infer<typeof studentProfileSchema>;
-
-// Antes de poder matricular a alguien (abajo) hace falta su identidad académica
-// (`StudentProfile`/número de alumno): sin esto no había ninguna forma de crearla
-// salvo por seed/API directa — ver identity/service.py::create_student_profile.
-// Vincular una cuenta es opcional (`StudentProfile.user_id` nullable): el alumno
-// puede existir en el sistema académico antes de tener cuenta.
-function CreateStudentProfileForm() {
-  const queryClient = useQueryClient();
-  const studentUsers = useQuery<UserListItem[]>({
-    queryKey: ["users", { role: "student" }],
-    queryFn: async () => (await apiClient.get("/users", { params: { role: "student" } })).data,
-  });
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<StudentProfileForm>({ resolver: zodResolver(studentProfileSchema) });
-
-  const createMutation = useMutation({
-    mutationFn: async (values: StudentProfileForm) =>
-      (
-        await apiClient.post("/students", {
-          student_number: values.student_number,
-          user_id: values.user_id || null,
-        })
-      ).data,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["students"] });
-      reset();
-    },
-  });
-
-  return (
-    <div className="mb-4 border-b border-brand-100 pb-4">
-      <p className="mb-2 text-xs font-medium text-brand-700">Nuevo alumno (identidad académica)</p>
-      <form
-        onSubmit={handleSubmit((values) => createMutation.mutate(values))}
-        className="grid gap-3 sm:grid-cols-3"
-        noValidate
-      >
-        <Field label="Número de alumno" error={errors.student_number?.message}>
-          <input className={inputClass} {...register("student_number")} />
-        </Field>
-        <Field label="Vincular cuenta (opcional)">
-          <select className={inputClass} {...register("user_id")}>
-            <option value="">Sin cuenta todavía</option>
-            {studentUsers.data?.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.display_name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <div className="flex items-end">
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="focus-ring w-full rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-          >
-            Crear alumno
-          </button>
-        </div>
-      </form>
-      {createMutation.isError && <ErrorState error={createMutation.error} />}
-    </div>
-  );
-}
-
 function EnrollmentsSection() {
   const queryClient = useQueryClient();
   const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
@@ -1492,10 +1417,10 @@ function EnrollmentsSection() {
 
   return (
     <Card title="Inscripciones">
-      <CreateStudentProfileForm />
       {!canCreate && (
         <p className="mb-3 text-xs text-slate-500">
-          Crea al menos un alumno, un año académico y una sección antes de matricular.
+          Crea al menos un alumno (en Administración &gt; Alumnos), un año académico y una sección
+          antes de matricular.
         </p>
       )}
       <form

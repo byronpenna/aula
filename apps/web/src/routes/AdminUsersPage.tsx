@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../lib/apiClient";
+import { apiClient, ApiError } from "../lib/apiClient";
 import type { Permissions, RoleSummary, UserCreateResult, UserListItem } from "../lib/types";
 import { ErrorState, ForbiddenState, LoadingState } from "../components/States";
 import { Breadcrumbs } from "../components/Breadcrumbs";
@@ -46,8 +46,14 @@ const createUserSchema = z.object({
   username: z.string().min(1, "Requerido."),
   password: z.string().min(12, "Mínimo 12 caracteres (política del proveedor de identidad)."),
   role_code: z.string().min(1, "Requerido."),
+  // Solo aplica cuando role_code="student": crea de una vez la identidad académica
+  // (`StudentProfile`) vinculada a la cuenta nueva, en vez de requerir un segundo
+  // paso en Administración > Academia > Inscripciones (ver identity/router.py,
+  // POST /students). Opcional: un alumno puede quedar sin número todavía.
+  student_number: z.string().optional(),
 });
 type CreateUserForm = z.infer<typeof createUserSchema>;
+type CreateUserResult = UserCreateResult & { profile_warning: string | null };
 
 export function AdminUsersPage() {
   const { data: permissions, isLoading, error } = useQuery<Permissions>({
@@ -69,7 +75,7 @@ function AdminUsersContent() {
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [lastResult, setLastResult] = useState<UserCreateResult | null>(null);
+  const [lastResult, setLastResult] = useState<CreateUserResult | null>(null);
 
   const roles = useQuery<RoleSummary[]>({
     queryKey: ["roles"],
@@ -105,17 +111,31 @@ function AdminUsersContent() {
     defaultValues: { password: generatePassword() },
   });
   const currentPassword = watch("password");
+  const selectedRoleCode = watch("role_code");
 
   const createMutation = useMutation({
-    mutationFn: async (values: CreateUserForm) =>
-      (
-        await apiClient.post<UserCreateResult>("/users", {
-          ...values,
-          email: values.email || null,
-        })
-      ).data,
+    mutationFn: async (values: CreateUserForm): Promise<CreateUserResult> => {
+      const { data: user } = await apiClient.post<UserCreateResult>("/users", {
+        ...values,
+        email: values.email || null,
+      });
+      let profile_warning: string | null = null;
+      const studentNumber = values.student_number?.trim();
+      if (values.role_code === "student" && studentNumber) {
+        try {
+          await apiClient.post("/students", { student_number: studentNumber, user_id: user.id });
+        } catch (err) {
+          profile_warning =
+            err instanceof ApiError
+              ? err.message
+              : "La cuenta se creó, pero no se pudo asignar el número de alumno.";
+        }
+      }
+      return { ...user, profile_warning };
+    },
     onSuccess: (result) => {
       invalidateUsers();
+      queryClient.invalidateQueries({ queryKey: ["students"] });
       reset({ password: generatePassword() });
       setLastResult(result);
       setShowForm(false);
@@ -169,6 +189,9 @@ function AdminUsersContent() {
               </p>
             </>
           )}
+          {lastResult.profile_warning && (
+            <p className="mt-2 text-amber-800">⚠ {lastResult.profile_warning}</p>
+          )}
         </section>
       )}
 
@@ -217,6 +240,17 @@ function AdminUsersContent() {
                 <p className="mt-0.5 text-xs text-red-600">{errors.role_code.message}</p>
               )}
             </div>
+            {selectedRoleCode === "student" && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">
+                  Número de alumno (opcional)
+                </label>
+                <input className={inputClass} {...register("student_number")} />
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Si lo dejas vacío, puedes asignarlo después en Academia &gt; Inscripciones.
+                </p>
+              </div>
+            )}
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs font-medium text-slate-600">
                 Contraseña inicial (generada, editable)

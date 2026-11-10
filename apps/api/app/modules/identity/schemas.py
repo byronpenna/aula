@@ -43,6 +43,11 @@ class StudentProfileOut(BaseModel):
     id: uuid.UUID
     student_number: str
     display_name: str | None
+    first_name: str | None
+    last_name: str | None
+    birth_date: date | None
+    photo_file_id: uuid.UUID | None
+    user_id: uuid.UUID | None
 
 
 class StudentProfileCreate(BaseModel):
@@ -51,6 +56,20 @@ class StudentProfileCreate(BaseModel):
     puede vincular una cuenta ya existente aquí o dejarlo para más adelante."""
 
     student_number: str
+    first_name: str | None = None
+    last_name: str | None = None
+    birth_date: date | None = None
+    user_id: uuid.UUID | None = None
+
+
+class StudentProfileUpdate(BaseModel):
+    """Todos los campos son opcionales vía `exclude_unset` (igual convención que
+    `UserUpdate`): permite editar solo los datos personales, o solo vincular/
+    cambiar la cuenta (`user_id`), sin tener que repetir el resto."""
+
+    first_name: str | None = None
+    last_name: str | None = None
+    birth_date: date | None = None
     user_id: uuid.UUID | None = None
 
 
@@ -105,6 +124,10 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     display_name: str | None = None
     email: str | None = None
+    # Permite a quien tenga USERS_MANAGE fijar el @handle de OTRO usuario (p. ej.
+    # desde la ficha de un alumno) — normalización/unicidad se validan en
+    # `service.py::_resolve_handle`, mismo helper que usa el autoservicio `PATCH /me`.
+    handle: str | None = None
 
 
 class UserListItemOut(BaseModel):
@@ -169,17 +192,19 @@ class AuditEventOut(BaseModel):
 
 
 class GuardianLinkCreate(BaseModel):
+    """`student_id` no va aquí: ya viaja en la URL (`POST /students/{id}/guardians`),
+    igual convención que `RoleAssignmentCreate` no repite el `user_id` del path."""
+
     guardian_user_id: uuid.UUID
-    student_id: uuid.UUID
     relationship_label: str = "guardian"
     valid_from: date
     valid_to: date | None = None
 
 
 class GuardianLinkOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     guardian_user_id: uuid.UUID
+    guardian_display_name: str | None
     student_id: uuid.UUID
     relationship_label: str
     status: str

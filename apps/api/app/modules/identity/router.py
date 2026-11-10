@@ -17,15 +17,18 @@ from app.core.permissions import (
     ACADEMICS_MANAGE,
     AUDIT_READ,
     ENROLLMENT_MANAGE,
+    GUARDIAN_LINK_MANAGE,
     ROLES_MANAGE,
     USERS_MANAGE,
 )
 from app.db.session import get_db
 from app.modules.identity import repository as identity_repo
 from app.modules.identity import service as identity_service
-from app.modules.identity.models import Role, SchoolMembership, User
+from app.modules.identity.models import Role, SchoolMembership, StudentProfile, User
 from app.modules.identity.schemas import (
     AuditEventOut,
+    GuardianLinkCreate,
+    GuardianLinkOut,
     LinkedStudentOut,
     LocalLoginRequest,
     LocalLoginResponse,
@@ -40,6 +43,7 @@ from app.modules.identity.schemas import (
     RoleUserOut,
     StudentProfileCreate,
     StudentProfileOut,
+    StudentProfileUpdate,
     UserCreate,
     UserCreateOut,
     UserListItemOut,
@@ -133,16 +137,35 @@ def read_my_students(
     return identity_service.list_linked_students(db, user.id)
 
 
+def _student_profile_out(
+    profile: StudentProfile, linked_user_display_name: str | None
+) -> StudentProfileOut:
+    return StudentProfileOut(
+        id=profile.id,
+        student_number=profile.student_number,
+        display_name=identity_service.student_display_name(profile, linked_user_display_name),
+        first_name=profile.first_name,
+        last_name=profile.last_name,
+        birth_date=profile.birth_date,
+        photo_file_id=profile.photo_file_id,
+        user_id=profile.user_id,
+    )
+
+
 @router.get("/students", response_model=list[StudentProfileOut])
 def list_students(
     db: Session = Depends(get_db),
     current: CurrentMembership = Depends(require_permission(ENROLLMENT_MANAGE)),
 ) -> list[StudentProfileOut]:
     rows = identity_repo.list_student_profiles(db, current.school_id)
-    return [
-        StudentProfileOut(id=profile.id, student_number=profile.student_number, display_name=name)
-        for profile, name in rows
-    ]
+    return [_student_profile_out(profile, name) for profile, name in rows]
+
+
+def _linked_user_display_name(db: Session, profile: StudentProfile) -> str | None:
+    if profile.user_id is None:
+        return None
+    user = identity_repo.get_user(db, profile.user_id)
+    return user.display_name if user else None
 
 
 @router.post("/students", response_model=StudentProfileOut)
@@ -155,12 +178,90 @@ def create_student(
     profile = identity_service.create_student_profile(
         db, current, payload, request.state.request_id
     )
-    display_name = None
-    if profile.user_id is not None:
-        user = identity_repo.get_user(db, profile.user_id)
-        display_name = user.display_name if user else None
-    return StudentProfileOut(
-        id=profile.id, student_number=profile.student_number, display_name=display_name
+    return _student_profile_out(profile, _linked_user_display_name(db, profile))
+
+
+@router.patch("/students/{student_id}", response_model=StudentProfileOut)
+def update_student(
+    student_id: uuid.UUID,
+    payload: StudentProfileUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ENROLLMENT_MANAGE)),
+) -> StudentProfileOut:
+    profile = identity_service.update_student_profile(
+        db, current, student_id, payload, request.state.request_id
+    )
+    return _student_profile_out(profile, _linked_user_display_name(db, profile))
+
+
+@router.get("/students/{student_id}/guardians", response_model=list[GuardianLinkOut])
+def list_student_guardians(
+    student_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(GUARDIAN_LINK_MANAGE)),
+) -> list[GuardianLinkOut]:
+    rows = identity_service.list_guardian_links(db, current, student_id)
+    return [
+        GuardianLinkOut(
+            id=link.id,
+            guardian_user_id=link.guardian_user_id,
+            guardian_display_name=name,
+            student_id=link.student_id,
+            relationship_label=link.relationship_label,
+            status=link.status,
+            valid_from=link.valid_from,
+            valid_to=link.valid_to,
+        )
+        for link, name in rows
+    ]
+
+
+@router.post("/students/{student_id}/guardians", response_model=GuardianLinkOut)
+def create_student_guardian(
+    student_id: uuid.UUID,
+    payload: GuardianLinkCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(GUARDIAN_LINK_MANAGE)),
+) -> GuardianLinkOut:
+    link = identity_service.create_guardian_link(
+        db, current, student_id, payload, request.state.request_id
+    )
+    guardian = identity_repo.get_user(db, link.guardian_user_id)
+    return GuardianLinkOut(
+        id=link.id,
+        guardian_user_id=link.guardian_user_id,
+        guardian_display_name=guardian.display_name if guardian else None,
+        student_id=link.student_id,
+        relationship_label=link.relationship_label,
+        status=link.status,
+        valid_from=link.valid_from,
+        valid_to=link.valid_to,
+    )
+
+
+@router.delete("/students/{student_id}/guardians/{link_id}", response_model=GuardianLinkOut)
+def revoke_student_guardian(
+    student_id: uuid.UUID,
+    link_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(GUARDIAN_LINK_MANAGE)),
+) -> GuardianLinkOut:
+    link = identity_service.revoke_guardian_link(
+        db, current, student_id, link_id, request.state.request_id
+    )
+    guardian = identity_repo.get_user(db, link.guardian_user_id)
+    return GuardianLinkOut(
+        id=link.id,
+        guardian_user_id=link.guardian_user_id,
+        guardian_display_name=guardian.display_name if guardian else None,
+        student_id=link.student_id,
+        relationship_label=link.relationship_label,
+        status=link.status,
+        valid_from=link.valid_from,
+        valid_to=link.valid_to,
     )
 
 
@@ -223,13 +324,10 @@ def update_user(
 ) -> User:
     """Nunca acepta roles aquí (sección 4 de 04-MODELO-DATOS-Y-API.md: "no permitir
     modificar roles/alcances en un PATCH /users/{id} genérico") — eso vive en los
-    endpoints de /role-assignments de abajo."""
+    endpoints de /role-assignments de abajo. También permite fijar el `@handle` de
+    este usuario en su nombre (ver `identity_service.update_user`)."""
     user = _require_user(db, current, user_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(user, field, value)
-    db.commit()
-    db.refresh(user)
-    return user
+    return identity_service.update_user(db, user, payload)
 
 
 @router.post("/users/{user_id}/activate", response_model=UserListItemOut)

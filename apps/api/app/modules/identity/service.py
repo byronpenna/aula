@@ -18,6 +18,7 @@ from app.modules.identity import cognito_admin, mailer
 from app.modules.identity import repository as identity_repo
 from app.modules.identity.models import (
     AuditEvent,
+    GuardianStudentLink,
     LocalAuthCredential,
     MembershipRole,
     Role,
@@ -26,9 +27,12 @@ from app.modules.identity.models import (
     User,
 )
 from app.modules.identity.schemas import (
+    GuardianLinkCreate,
     RolePermissionsUpdate,
     StudentProfileCreate,
+    StudentProfileUpdate,
     UserCreate,
+    UserUpdate,
 )
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -180,26 +184,49 @@ def create_user(
 HANDLE_PATTERN = re.compile(r"^[a-z][a-z0-9_]{2,19}$")
 
 
-def update_my_handle(db: Session, user: User, handle: str | None) -> User:
-    """Autoservicio (`PATCH /me`): cualquier usuario, sin importar su rol, puede
-    elegir su propio `@handle` tageable (3-20 caracteres, empieza con letra, solo
+def _resolve_handle(db: Session, user: User, handle: str | None) -> str | None:
+    """Normaliza+valida formato (3-20 caracteres, empieza con letra, solo
     letras/dígitos/guion bajo — evita handles solo numéricos, fáciles de confundir
-    con un ID). Se normaliza acá (no con un `field_validator` de Pydantic: ningún
-    otro schema de esta API lo usa, y la columna igual tiene `UniqueConstraint`
-    como respaldo ante condiciones de carrera)."""
-    normalized = None
-    if handle is not None:
-        normalized = handle.strip().lstrip("@").lower()
-        if not HANDLE_PATTERN.match(normalized):
-            raise UnprocessableError(
-                "El usuario debe tener 3-20 caracteres, empezar con una letra y usar "
-                "solo letras, números o guion bajo (ej. byronpena)."
-            )
-    if normalized is not None and normalized != user.handle:
+    con un ID) y chequea unicidad global, sin aplicarlo todavía. Se hace acá (no con
+    un `field_validator` de Pydantic: ningún otro schema de esta API lo usa) porque
+    tanto el autoservicio (`PATCH /me`) como la edición admin (`PATCH /users/{id}`,
+    en nombre de otro usuario) necesitan exactamente la misma regla."""
+    if handle is None:
+        return None
+    normalized = handle.strip().lstrip("@").lower()
+    if not HANDLE_PATTERN.match(normalized):
+        raise UnprocessableError(
+            "El usuario debe tener 3-20 caracteres, empezar con una letra y usar "
+            "solo letras, números o guion bajo (ej. byronpena)."
+        )
+    if normalized != user.handle:
         existing = identity_repo.get_user_by_handle(db, normalized)
         if existing is not None and existing.id != user.id:
             raise ConflictError(f"El usuario '@{normalized}' ya está en uso.")
-    user.handle = normalized
+    return normalized
+
+
+def update_my_handle(db: Session, user: User, handle: str | None) -> User:
+    """Autoservicio (`PATCH /me`): cualquier usuario, sin importar su rol, puede
+    elegir su propio `@handle` tageable. La columna igual tiene `UniqueConstraint`
+    como respaldo ante condiciones de carrera."""
+    user.handle = _resolve_handle(db, user, handle)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def update_user(db: Session, user: User, payload: UserUpdate) -> User:
+    """Edición admin (`PATCH /users/{id}`, requiere USERS_MANAGE): a diferencia de
+    `PATCH /me`, puede fijar el `@handle` de OTRO usuario — p. ej. desde la ficha de
+    un alumno que todavía no eligió uno. Nunca acepta roles aquí (sección 4: "no
+    permitir modificar roles/alcances en un PATCH /users/{id} genérico") — eso vive
+    en los endpoints de /role-assignments."""
+    data = payload.model_dump(exclude_unset=True)
+    if "handle" in data:
+        data["handle"] = _resolve_handle(db, user, data["handle"])
+    for field, value in data.items():
+        setattr(user, field, value)
     db.commit()
     db.refresh(user)
     return user
@@ -368,6 +395,22 @@ def update_role_permissions(
     return role
 
 
+def _require_unlinked_user(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    *,
+    exclude_profile_id: uuid.UUID | None,
+) -> None:
+    """Valida un `user_id` a vincular (al crear o editar un `StudentProfile`): debe
+    tener membresía en este colegio y no estar ya vinculado a OTRO perfil."""
+    if identity_repo.get_membership(db, current.school_id, user_id) is None:
+        raise NotFoundError("El usuario indicado no existe en este colegio.")
+    existing = identity_repo.get_student_profile_by_user(db, current.school_id, user_id)
+    if existing is not None and existing.id != exclude_profile_id:
+        raise ConflictError("Ese usuario ya tiene un perfil de alumno en este colegio.")
+
+
 def create_student_profile(
     db: Session,
     current: CurrentMembership,
@@ -377,7 +420,9 @@ def create_student_profile(
     """Alta de la identidad académica del alumno (sección 7: matrícula), separada a
     propósito de `create_user` — el modelo admite un `StudentProfile` sin cuenta
     todavía (`user_id` nullable), así que esto nunca crea un `User`; si se pasa
-    `user_id`, solo vincula una cuenta que ya existe en este colegio."""
+    `user_id`, solo vincula una cuenta que ya existe en este colegio. Nombres y
+    fecha de nacimiento viven en el propio perfil (no en `User.display_name`)
+    porque ese dato académico puede existir antes de que haya cuenta."""
     student_number = payload.student_number.strip()
     if not student_number:
         raise UnprocessableError("El número de alumno no puede estar vacío.")
@@ -385,14 +430,14 @@ def create_student_profile(
         raise ConflictError(f"Ya existe un alumno con el número '{student_number}'.")
 
     if payload.user_id is not None:
-        if identity_repo.get_membership(db, current.school_id, payload.user_id) is None:
-            raise NotFoundError("El usuario indicado no existe en este colegio.")
-        if identity_repo.get_student_profile_by_user(db, current.school_id, payload.user_id):
-            raise ConflictError("Ese usuario ya tiene un perfil de alumno en este colegio.")
+        _require_unlinked_user(db, current, payload.user_id, exclude_profile_id=None)
 
     profile = StudentProfile(
         school_id=current.school_id,
         student_number=student_number,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        birth_date=payload.birth_date,
         user_id=payload.user_id,
     )
     db.add(profile)
@@ -411,6 +456,127 @@ def create_student_profile(
     return profile
 
 
+def _require_student_profile(
+    db: Session, current: CurrentMembership, student_id: uuid.UUID
+) -> StudentProfile:
+    profile = identity_repo.get_student_profile(db, student_id)
+    if profile is None or profile.school_id != current.school_id:
+        raise NotFoundError("El alumno indicado no existe en este colegio.")
+    return profile
+
+
+def update_student_profile(
+    db: Session,
+    current: CurrentMembership,
+    student_id: uuid.UUID,
+    payload: StudentProfileUpdate,
+    request_id: str | None,
+) -> StudentProfile:
+    profile = _require_student_profile(db, current, student_id)
+    data = payload.model_dump(exclude_unset=True)
+    if "user_id" in data and data["user_id"] is not None and data["user_id"] != profile.user_id:
+        _require_unlinked_user(db, current, data["user_id"], exclude_profile_id=profile.id)
+    for field, value in data.items():
+        setattr(profile, field, value)
+    record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="student_profile.update",
+        target_type="student_profile",
+        target_id=str(profile.id),
+        request_id=request_id,
+    )
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+def list_guardian_links(
+    db: Session, current: CurrentMembership, student_id: uuid.UUID
+) -> list[tuple[GuardianStudentLink, str | None]]:
+    _require_student_profile(db, current, student_id)
+    return identity_repo.list_guardian_links_for_student(db, current.school_id, student_id)
+
+
+def create_guardian_link(
+    db: Session,
+    current: CurrentMembership,
+    student_id: uuid.UUID,
+    payload: GuardianLinkCreate,
+    request_id: str | None,
+) -> GuardianStudentLink:
+    _require_student_profile(db, current, student_id)
+    if identity_repo.get_membership(db, current.school_id, payload.guardian_user_id) is None:
+        raise NotFoundError("El tutor indicado no existe en este colegio.")
+    if identity_repo.get_active_guardian_link_for_pair(
+        db, current.school_id, payload.guardian_user_id, student_id
+    ):
+        raise ConflictError("Ese tutor ya está vinculado a este alumno.")
+
+    link = GuardianStudentLink(
+        school_id=current.school_id,
+        guardian_user_id=payload.guardian_user_id,
+        student_id=student_id,
+        relationship_label=payload.relationship_label,
+        status="active",
+        valid_from=payload.valid_from,
+        valid_to=payload.valid_to,
+    )
+    db.add(link)
+    db.flush()
+    record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="guardian_link.create",
+        target_type="guardian_student_link",
+        target_id=str(link.id),
+        request_id=request_id,
+    )
+    db.commit()
+    db.refresh(link)
+    return link
+
+
+def revoke_guardian_link(
+    db: Session,
+    current: CurrentMembership,
+    student_id: uuid.UUID,
+    link_id: uuid.UUID,
+    request_id: str | None,
+) -> GuardianStudentLink:
+    _require_student_profile(db, current, student_id)
+    link = identity_repo.get_guardian_link(db, current.school_id, link_id)
+    if link is None or link.student_id != student_id:
+        raise NotFoundError("El vínculo indicado no existe para este alumno.")
+    if link.status != "inactive":
+        link.status = "inactive"
+        record_audit_event(
+            db,
+            school_id=current.school_id,
+            actor_id=current.membership.user_id,
+            action="guardian_link.revoke",
+            target_type="guardian_student_link",
+            target_id=str(link.id),
+            request_id=request_id,
+        )
+        db.commit()
+        db.refresh(link)
+    return link
+
+
+def student_display_name(
+    profile: StudentProfile, linked_user_display_name: str | None
+) -> str | None:
+    """Nombre a mostrar para un alumno: prioriza nombres propios del perfil (existen
+    aunque no tenga cuenta todavía) y solo cae al `display_name` de la cuenta
+    vinculada para los perfiles creados antes de que existieran esos campos."""
+    if profile.first_name or profile.last_name:
+        return " ".join(part for part in (profile.first_name, profile.last_name) if part)
+    return linked_user_display_name
+
+
 def list_linked_students(db: Session, guardian_user_id: uuid.UUID) -> list[dict]:
     links = identity_repo.get_active_guardian_links(db, guardian_user_id)
     results = []
@@ -424,7 +590,9 @@ def list_linked_students(db: Session, guardian_user_id: uuid.UUID) -> list[dict]
                 "student_id": profile.id,
                 "school_id": profile.school_id,
                 "student_number": profile.student_number,
-                "display_name": student_user.display_name if student_user else None,
+                "display_name": student_display_name(
+                    profile, student_user.display_name if student_user else None
+                ),
                 "relationship_label": link.relationship_label,
             }
         )
