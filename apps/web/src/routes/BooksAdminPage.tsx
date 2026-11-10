@@ -10,6 +10,7 @@ import { Breadcrumbs } from "../components/Breadcrumbs";
 import { EmptyState, ErrorState, ForbiddenState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatMoney as money } from "../lib/money";
+import { formatDateTime } from "../lib/dates";
 import { PURCHASE_METHOD_LABEL, PURCHASE_STATUS_CLASS, PURCHASE_STATUS_LABEL } from "../lib/books";
 
 const inputClass = "focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm";
@@ -303,7 +304,7 @@ function BookVersionsPanel({ bookId, onChanged }: { bookId: string; onChanged: (
             >
               <span>
                 {version.filename} · {(version.size_bytes / 1024).toFixed(0)} KB ·{" "}
-                {new Date(version.created_at).toLocaleString()}
+                {formatDateTime(version.created_at)}
               </span>
               <span className="flex items-center gap-2">
                 <span

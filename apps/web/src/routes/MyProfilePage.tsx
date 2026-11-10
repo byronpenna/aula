@@ -24,7 +24,7 @@ export function MyProfilePage() {
 
   return (
     <div className="max-w-md space-y-4">
-      <h1 className="text-lg font-semibold text-slate-900">Mi perfil</h1>
+      <h1 className="font-display text-2xl font-bold text-brand-900">Mi perfil</h1>
       <div className="rounded-xl border border-brand-100 bg-white p-5">
         <p className="text-sm text-slate-700">{me.display_name}</p>
         {me.email && <p className="text-xs text-slate-500">{me.email}</p>}

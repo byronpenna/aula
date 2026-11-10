@@ -13,6 +13,25 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+// Mismo logo/nombre que el header de AppShell.tsx: es lo primero que ve
+// cualquier usuario, así que debe sentirse como la misma plataforma desde el
+// primer segundo, no como una pantalla de login genérica sin marca.
+function LoginBrandHeader() {
+  return (
+    <div className="mb-6 flex flex-col items-center text-center">
+      <img
+        src="/img/logo.jpg"
+        alt="Colegio Linares"
+        width={56}
+        height={56}
+        className="h-14 w-14 rounded-full object-cover shadow-sm"
+      />
+      <h1 className="mt-3 font-display text-xl font-bold text-brand-900">Colegio Linares</h1>
+      <p className="text-sm text-brand-700">Aula Virtual</p>
+    </div>
+  );
+}
+
 export function LoginPage() {
   const { authMode, loginLocal, loginWithCognito } = useAuth();
 
@@ -38,9 +57,9 @@ function CognitoLoginPanel({ onLogin }: { onLogin: () => Promise<void> }) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
-      <div className="w-full max-w-sm rounded-xl bg-white p-8 text-center shadow-sm">
-        <h1 className="mb-1 text-xl font-semibold text-slate-900">Aula Virtual</h1>
+    <div className="flex min-h-screen items-center justify-center bg-brand-50 px-4">
+      <div className="w-full max-w-sm rounded-xl border border-brand-100 bg-white p-8 text-center shadow-sm">
+        <LoginBrandHeader />
         <p className="mb-6 text-sm text-slate-500">Inicia sesión con tu cuenta del colegio.</p>
 
         {error && (
@@ -86,14 +105,14 @@ function LocalLoginForm({
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-brand-50 px-4">
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="w-full max-w-sm rounded-xl bg-white p-8 shadow-sm"
+        className="w-full max-w-sm rounded-xl border border-brand-100 bg-white p-8 shadow-sm"
         noValidate
       >
-        <h1 className="mb-1 text-xl font-semibold text-slate-900">Aula Virtual</h1>
-        <p className="mb-6 text-sm text-slate-500">
+        <LoginBrandHeader />
+        <p className="mb-6 text-center text-sm text-slate-500">
           Ingreso de desarrollo local (adaptador temporal, no Cognito).
         </p>
 

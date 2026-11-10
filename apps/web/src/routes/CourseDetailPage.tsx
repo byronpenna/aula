@@ -10,6 +10,7 @@ import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { downloadFile } from "../lib/download";
+import { formatDateTime } from "../lib/dates";
 import { useAuth } from "../context/AuthContext";
 
 // pdf.js pesa bastante (visor + worker); se carga bajo demanda recién al abrir
@@ -127,7 +128,7 @@ export function CourseDetailPage() {
             </h1>
             {isStaff && (
               <button
-                className="focus-ring rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+                className="focus-ring rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
                 onClick={() => setShowForm((v) => !v)}
               >
                 {showForm ? "Cancelar" : "Nueva tarea"}
@@ -233,20 +234,14 @@ export function CourseDetailPage() {
                 >
                   <div>
                     <Link
-                      to={`/assignments/${assignment.id}`}
+                      to={`/assignments/${assignment.id}?courseId=${courseId}`}
                       className="focus-ring font-display font-medium text-brand-900 hover:underline"
                     >
                       {assignment.title}
                     </Link>
-                    <p className="text-sm text-slate-500">
-                      Vence {new Date(assignment.due_at).toLocaleString()} ·{" "}
-                      <span
-                        className={`font-medium ${
-                          assignment.status === "published" ? "text-emerald-700" : "text-amber-700"
-                        }`}
-                      >
-                        {assignment.status}
-                      </span>
+                    <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                      <span>Vence {formatDateTime(assignment.due_at)}</span>
+                      <StatusBadge status={assignment.status} />
                     </p>
                   </div>
                   {isStaff && assignment.status === "draft" && (
@@ -405,7 +400,7 @@ function CourseStudentsSection({ courseId }: { courseId: string }) {
         <h2 className="text-base font-semibold text-brand-900">Estudiantes inscritos</h2>
         <button
           type="button"
-          className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+          className="focus-ring rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
           onClick={() => setIsEnrolling((v) => !v)}
         >
           {isEnrolling ? "Cancelar" : "Inscribir alumno"}
@@ -584,7 +579,7 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
           ) : (
             <button
               type="button"
-              className="focus-ring rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-100"
+              className="focus-ring rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
               onClick={() => setIsCreating(true)}
             >
               Nueva sección

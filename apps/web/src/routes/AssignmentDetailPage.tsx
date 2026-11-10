@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient, ApiError } from "../lib/apiClient";
-import type { Submission } from "../lib/types";
+import type { Assignment, CourseStudent, Submission } from "../lib/types";
 import { ErrorState, LoadingState } from "../components/States";
+import { StatusBadge } from "../components/StatusBadge";
 import { FileAttachments } from "../components/FileAttachments";
+import { formatDateTime } from "../lib/dates";
 import { useAuth } from "../context/AuthContext";
 
 type SaveState = "idle" | "pending" | "saving" | "saved" | "offline" | "conflict" | "error";
@@ -13,6 +15,13 @@ const DEBOUNCE_MS = 2000;
 
 export function AssignmentDetailPage() {
   const { assignmentId } = useParams<{ assignmentId: string }>();
+  const [searchParams] = useSearchParams();
+  // El curso solo se conoce cuando se llega desde CourseDetailPage, que ya lo
+  // pasa como ?courseId= (no hay un GET /assignments/{id} de lectura suelta en
+  // la API); si se llega por un enlace directo sin ese parámetro, el título y la
+  // lista de estudiantes simplemente no se resuelven y la pantalla degrada al
+  // comportamiento anterior.
+  const courseId = searchParams.get("courseId");
   const queryClient = useQueryClient();
   const { activeSchoolId, me } = useAuth();
   const currentRoles =
@@ -20,6 +29,22 @@ export function AssignmentDetailPage() {
   const isStudent = currentRoles.includes("student");
   const isStaff = ["teacher", "school_admin", "coordinator"].some((r) =>
     currentRoles.includes(r),
+  );
+
+  const assignmentsQuery = useQuery<Assignment[]>({
+    queryKey: ["courses", courseId, "assignments"],
+    queryFn: async () => (await apiClient.get(`/courses/${courseId}/assignments`)).data,
+    enabled: Boolean(courseId),
+  });
+  const assignment = assignmentsQuery.data?.find((a) => a.id === assignmentId);
+
+  const courseStudentsQuery = useQuery<CourseStudent[]>({
+    queryKey: ["courses", courseId, "students"],
+    queryFn: async () => (await apiClient.get(`/courses/${courseId}/students`)).data,
+    enabled: isStaff && Boolean(courseId),
+  });
+  const studentLabelById = new Map(
+    courseStudentsQuery.data?.map((s) => [s.id, s.display_name ?? `Matrícula ${s.student_number}`]),
   );
 
   const submissionQuery = useQuery<Submission | null>({
@@ -102,10 +127,35 @@ export function AssignmentDetailPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold">Tarea</h1>
+      <div>
+        {courseId && (
+          <Link
+            to={`/courses/${courseId}?tab=tareas`}
+            className="focus-ring mb-2 inline-block rounded text-sm text-brand-700 hover:underline"
+          >
+            ← Volver al curso
+          </Link>
+        )}
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <h1 className="font-display text-2xl font-bold text-brand-900">
+            {assignment?.title ?? "Tarea"}
+          </h1>
+          {assignment && <StatusBadge status={assignment.status} />}
+        </div>
+        {assignment && (
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+            <span>Vence {formatDateTime(assignment.due_at)}</span>
+            <span aria-hidden="true" className="h-3 w-px bg-slate-300" />
+            <span>Puntaje máximo: {assignment.max_score}</span>
+          </p>
+        )}
+        {assignment?.instructions && (
+          <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">{assignment.instructions}</p>
+        )}
+      </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="mb-2 text-sm font-medium text-slate-700">Material adjunto</h2>
+      <div className="rounded-xl border border-brand-100 bg-white p-4">
+        <h2 className="mb-2 text-base font-semibold text-brand-900">Material adjunto</h2>
         <FileAttachments
           queryKey={["assignments", assignmentId, "files"]}
           listUrl={`/assignments/${assignmentId}/files`}
@@ -115,7 +165,7 @@ export function AssignmentDetailPage() {
       </div>
 
       {isStudent && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="rounded-xl border border-brand-100 bg-white p-4">
           <label className="mb-1 block text-sm font-medium" htmlFor="submission-body">
             Mi entrega
           </label>
@@ -183,8 +233,8 @@ export function AssignmentDetailPage() {
       )}
 
       {isStaff && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <h2 className="mb-2 text-sm font-medium text-slate-700">Entregas de alumnos</h2>
+        <div className="rounded-xl border border-brand-100 bg-white p-4">
+          <h2 className="mb-2 text-base font-semibold text-brand-900">Entregas de alumnos</h2>
           {submissionsListQuery.isLoading && <LoadingState />}
           {submissionsListQuery.error && <ErrorState error={submissionsListQuery.error} />}
           {submissionsListQuery.data && submissionsListQuery.data.length === 0 && (
@@ -203,12 +253,14 @@ export function AssignmentDetailPage() {
               </thead>
               <tbody>
                 {submissionsListQuery.data.map((s) => (
-                  <>
-                    <tr key={s.id} className="border-t border-slate-100">
-                      <td className="py-1">{s.student_id.slice(0, 8)}</td>
-                      <td className="py-1">{s.status}</td>
+                  <Fragment key={s.id}>
+                    <tr className="border-t border-slate-100">
+                      <td className="py-1">{studentLabelById.get(s.student_id) ?? s.student_id.slice(0, 8)}</td>
                       <td className="py-1">
-                        {s.submitted_at ? new Date(s.submitted_at).toLocaleString() : "—"}
+                        <StatusBadge status={s.status} />
+                      </td>
+                      <td className="py-1">
+                        {s.submitted_at ? formatDateTime(s.submitted_at) : "—"}
                       </td>
                       <td className="py-1">{s.late ? "Sí" : "No"}</td>
                       <td className="py-1">
@@ -224,7 +276,7 @@ export function AssignmentDetailPage() {
                       </td>
                     </tr>
                     {expandedSubmissionId === s.id && (
-                      <tr key={`${s.id}-files`} className="border-t border-slate-100 bg-slate-50">
+                      <tr className="border-t border-slate-100 bg-slate-50">
                         <td colSpan={5} className="py-2">
                           <FileAttachments
                             queryKey={["submissions", s.id, "files"]}
@@ -234,7 +286,7 @@ export function AssignmentDetailPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
