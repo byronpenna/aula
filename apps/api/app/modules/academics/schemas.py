@@ -163,6 +163,7 @@ class CourseStudentOut(BaseModel):
     id: uuid.UUID
     student_number: str
     display_name: str | None
+    photo_file_id: uuid.UUID | None = None
 
 
 class CourseEnrollStudent(BaseModel):

@@ -82,6 +82,7 @@ class StudentDetailOut(BaseModel):
     student_number: str
     display_name: str | None
     email: str | None
+    photo_file_id: uuid.UUID | None = None
 
 
 class LinkedStudentOut(BaseModel):

@@ -114,3 +114,4 @@ def test_student_without_user_account_has_null_contact_fields(db_session, client
     assert resp.json()["display_name"] is None
     assert resp.json()["email"] is None
     assert resp.json()["student_number"] == f"NA-{unique_suffix}"
+    assert resp.json()["photo_file_id"] is None

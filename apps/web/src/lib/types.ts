@@ -135,6 +135,7 @@ export interface CourseStudent {
   id: string;
   student_number: string;
   display_name: string | null;
+  photo_file_id: string | null;
 }
 
 export interface ResourceSectionWithFiles {
@@ -183,6 +184,7 @@ export interface StudentDetail {
   student_number: string;
   display_name: string | null;
   email: string | null;
+  photo_file_id: string | null;
 }
 
 export interface EnrollmentRecord {

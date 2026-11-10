@@ -37,8 +37,14 @@ def test_admin_lists_enrolled_students_and_renames_course(db_session, client, un
     assert list_resp.status_code == 200, list_resp.text
     assert len(list_resp.json()) == 1
     assert list_resp.json()[0]["display_name"] == "Alumno Demo"
+    assert list_resp.json()[0]["photo_file_id"] is None
     # Solo lectura: el payload no trae nada editable del lado del alumno.
-    assert set(list_resp.json()[0].keys()) == {"id", "student_number", "display_name"}
+    assert set(list_resp.json()[0].keys()) == {
+        "id",
+        "student_number",
+        "display_name",
+        "photo_file_id",
+    }
 
     rename_resp = client.patch(
         f"/api/v1/courses/{course_id}/name",

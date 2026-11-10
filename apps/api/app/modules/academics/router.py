@@ -343,7 +343,12 @@ def list_course_students(
     users:manage, un flujo aparte en /admin/users."""
     rows = academics_service.list_course_students(db, current, user.id, course_id)
     return [
-        CourseStudentOut(id=profile.id, student_number=profile.student_number, display_name=name)
+        CourseStudentOut(
+            id=profile.id,
+            student_number=profile.student_number,
+            display_name=name,
+            photo_file_id=profile.photo_file_id,
+        )
         for profile, name in rows
     ]
 
@@ -374,7 +379,12 @@ def list_enrollable_students(
     colegio que todavía no está en este curso."""
     rows = academics_service.list_enrollable_students(db, current, user.id, course_id)
     return [
-        CourseStudentOut(id=profile.id, student_number=profile.student_number, display_name=name)
+        CourseStudentOut(
+            id=profile.id,
+            student_number=profile.student_number,
+            display_name=name,
+            photo_file_id=profile.photo_file_id,
+        )
         for profile, name in rows
     ]
 
@@ -441,6 +451,7 @@ def get_student_detail(
         student_number=student.student_number,
         display_name=student_user.display_name if student_user else None,
         email=student_user.email if student_user else None,
+        photo_file_id=student.photo_file_id,
     )
 
 

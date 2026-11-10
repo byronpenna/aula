@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../lib/apiClient";
-import { getFileBlobUrl } from "../lib/download";
 import type {
   AcademicYear,
   EnrollmentRecord,
@@ -18,6 +17,7 @@ import { Breadcrumbs } from "../components/Breadcrumbs";
 import { EmptyState, ErrorState, ForbiddenState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
 import { CloseIcon } from "../components/icons";
+import { StudentAvatar } from "../components/StudentAvatar";
 
 const inputClass = "focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm";
 const th = "px-2 py-1.5 text-left text-xs font-medium text-brand-700";
@@ -108,7 +108,7 @@ function StudentsAdminContent({ canManageUsers }: { canManageUsers: boolean }) {
   const selected = students.data?.find((s) => s.id === selectedId) ?? null;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <Breadcrumbs items={[{ label: "Administración", to: "/admin" }, { label: "Alumnos" }]} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -167,46 +167,45 @@ function StudentsAdminContent({ canManageUsers }: { canManageUsers: boolean }) {
       )}
 
       {students.data && students.data.length > 0 && (
-        <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-          <div className="overflow-x-auto rounded-xl border border-brand-100 bg-white">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b border-brand-100">
-                  <th className={th}>Alumno</th>
-                  <th className={th}>Número</th>
-                </tr>
-              </thead>
-              <tbody>
-                {students.data.map((student) => (
-                  <tr
-                    key={student.id}
-                    className={`cursor-pointer border-b border-slate-100 hover:bg-brand-50 ${
-                      student.id === selectedId ? "bg-brand-50" : ""
-                    }`}
+        <div className="space-y-6">
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {students.data.map((student) => {
+              const name = student.display_name ?? "Sin nombre registrado";
+              const isSelected = student.id === selectedId;
+              return (
+                <li key={student.id}>
+                  <button
+                    type="button"
                     onClick={() => setSelectedId(student.id)}
+                    className={`focus-ring flex w-full flex-col items-center gap-2 rounded-xl border bg-white p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+                      isSelected
+                        ? "border-brand-400 ring-2 ring-brand-200"
+                        : "border-brand-100 hover:border-brand-300"
+                    }`}
                   >
-                    <td className={td}>{student.display_name ?? "Sin nombre registrado"}</td>
-                    <td className={td}>{student.student_number}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    <StudentAvatar photoFileId={student.photo_file_id} name={name} size="h-16 w-16" />
+                    <div className="min-w-0 w-full">
+                      <p className="truncate font-display text-sm font-medium text-brand-900">
+                        {name}
+                      </p>
+                      <p className="truncate text-xs text-slate-500">
+                        Matrícula {student.student_number}
+                      </p>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
 
-          <div>
-            {selected ? (
-              <StudentDetailPanel
-                key={selected.id}
-                student={selected}
-                canManageUsers={canManageUsers}
-              />
-            ) : (
-              <EmptyState
-                title="Selecciona un alumno"
-                description="Haz clic en una fila de la izquierda para ver y editar su expediente."
-              />
-            )}
-          </div>
+          {selected ? (
+            <StudentDetailPanel key={selected.id} student={selected} canManageUsers={canManageUsers} />
+          ) : (
+            <EmptyState
+              title="Selecciona un alumno"
+              description="Haz clic en una tarjeta para ver y editar su expediente."
+            />
+          )}
         </div>
       )}
     </div>
@@ -296,21 +295,6 @@ function StudentPhotoCard({ student }: { student: StudentProfile }) {
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const photo = useQuery({
-    queryKey: ["students", student.id, "photo-url", student.photo_file_id],
-    queryFn: async () => getFileBlobUrl(student.photo_file_id as string),
-    enabled: Boolean(student.photo_file_id),
-  });
-  const photoUrl = photo.data?.url ?? null;
-
-  // Solo revoca el blob: la obtención vive en useQuery (igual convención de datos
-  // que el resto de la app), así este efecto nunca llama a setState.
-  useEffect(() => {
-    return () => {
-      if (photoUrl) URL.revokeObjectURL(photoUrl);
-    };
-  }, [photoUrl]);
-
   const uploadMutation = useMutation({
     mutationFn: async (file: globalThis.File) => {
       const formData = new FormData();
@@ -319,6 +303,7 @@ function StudentPhotoCard({ student }: { student: StudentProfile }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students"] });
+      queryClient.invalidateQueries({ queryKey: ["students", "photo-url"] });
       if (inputRef.current) inputRef.current.value = "";
     },
   });
@@ -331,13 +316,11 @@ function StudentPhotoCard({ student }: { student: StudentProfile }) {
   return (
     <Card title="Fotografía">
       <div className="flex items-center gap-4">
-        {photoUrl ? (
-          <img src={photoUrl} alt="" className="h-20 w-20 rounded-full object-cover" />
-        ) : (
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-brand-50 text-xs text-brand-400">
-            Sin foto
-          </div>
-        )}
+        <StudentAvatar
+          photoFileId={student.photo_file_id}
+          name={student.display_name ?? student.student_number}
+          size="h-20 w-20"
+        />
         <div>
           <input
             ref={inputRef}

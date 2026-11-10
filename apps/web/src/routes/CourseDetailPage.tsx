@@ -5,7 +5,14 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiClient } from "../lib/apiClient";
-import type { Assignment, Course, CourseResources, CourseStudent, FileAttachment } from "../lib/types";
+import type {
+  Assignment,
+  Course,
+  CourseResources,
+  CourseStudent,
+  FileAttachment,
+  Permissions,
+} from "../lib/types";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
 import { Breadcrumbs } from "../components/Breadcrumbs";
@@ -14,6 +21,7 @@ import { formatDateTime } from "../lib/dates";
 import { DownloadIcon, EyeIcon, PencilIcon, TrashIcon } from "../components/icons";
 import { ResourceTypeBadge } from "../components/ResourceTypeBadge";
 import { getResourceType, RESOURCE_TYPE_FILTERS, RESOURCE_UPLOAD_ACCEPT } from "../lib/resourceTypes";
+import { StudentAvatar } from "../components/StudentAvatar";
 import { useAuth } from "../context/AuthContext";
 
 // pdf.js pesa bastante (visor + worker); se carga bajo demanda recién al abrir
@@ -377,6 +385,16 @@ function CourseStudentsSection({ courseId }: { courseId: string }) {
     queryFn: async () => (await apiClient.get(`/courses/${courseId}/students`)).data,
   });
 
+  // La foto solo se intenta descargar para quien realmente puede verla
+  // (files/service.py::get_download exige enrollment:manage para fotos de
+  // alumno); sin este permiso, mostrarla igual solo produciría un 403 y un
+  // aviso de "no se pudo cargar" engañoso en cada tarjeta.
+  const { data: permissions } = useQuery<Permissions>({
+    queryKey: ["me", "permissions"],
+    queryFn: async () => (await apiClient.get("/me/permissions")).data,
+  });
+  const canViewPhotos = permissions?.permissions.includes("enrollment:manage") ?? false;
+
   const candidates = useQuery<CourseStudent[]>({
     queryKey: ["courses", courseId, "enrollable-students"],
     queryFn: async () => (await apiClient.get(`/courses/${courseId}/enrollable-students`)).data,
@@ -463,24 +481,27 @@ function CourseStudentsSection({ courseId }: { courseId: string }) {
         />
       )}
       {data && data.length > 0 && (
-        <ul className="divide-y divide-brand-50">
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {data.map((student) => {
             const name = student.display_name ?? "Sin nombre registrado";
             return (
               <li key={student.id}>
                 <Link
                   to={`/students/${student.id}`}
-                  className="focus-ring -mx-2 flex items-center gap-3 rounded-md px-2 py-2.5 hover:bg-brand-50"
+                  className="focus-ring flex w-full flex-col items-center gap-2 rounded-xl border border-brand-100 bg-white p-3 text-center shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md"
                 >
-                  <span
-                    aria-hidden="true"
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 font-display text-sm font-bold text-brand-700"
-                  >
-                    {name.charAt(0).toUpperCase()}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-brand-900">{name}</p>
-                    <p className="text-sm text-slate-500">Matrícula {student.student_number}</p>
+                  <StudentAvatar
+                    photoFileId={canViewPhotos ? student.photo_file_id : null}
+                    name={name}
+                    size="h-14 w-14"
+                  />
+                  <div className="min-w-0 w-full">
+                    <p className="truncate font-display text-sm font-medium text-brand-900">
+                      {name}
+                    </p>
+                    <p className="truncate text-xs text-slate-500">
+                      Matrícula {student.student_number}
+                    </p>
                   </div>
                 </Link>
               </li>

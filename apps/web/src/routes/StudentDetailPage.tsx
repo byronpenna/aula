@@ -1,10 +1,11 @@
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient, ApiError } from "../lib/apiClient";
-import type { Course, StudentDetail, StudentPaymentPlan } from "../lib/types";
+import type { Course, Permissions, StudentDetail, StudentPaymentPlan } from "../lib/types";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { StudentAvatar } from "../components/StudentAvatar";
 import { formatMoney, formatMonth } from "../lib/money";
 import { EFFECTIVE_STATUS_CLASS, EFFECTIVE_STATUS_LABEL, PAYMENT_METHOD_LABEL } from "../lib/billing";
 
@@ -33,6 +34,14 @@ export function StudentDetailPage() {
     enabled: Boolean(studentId),
   });
 
+  // La foto solo se intenta descargar para quien realmente puede verla (ver el
+  // mismo comentario en CourseDetailPage.tsx::CourseStudentsSection).
+  const { data: permissions } = useQuery<Permissions>({
+    queryKey: ["me", "permissions"],
+    queryFn: async () => (await apiClient.get("/me/permissions")).data,
+  });
+  const canViewPhoto = permissions?.permissions.includes("enrollment:manage") ?? false;
+
   if (isLoading) return <LoadingState label="Cargando ficha del alumno…" />;
   if (error) return <ErrorState error={error} />;
   if (!student) return null;
@@ -45,12 +54,11 @@ export function StudentDetailPage() {
 
       <div className="rounded-xl border border-brand-100 bg-white p-4">
         <div className="flex items-center gap-3">
-          <span
-            aria-hidden="true"
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand-100 font-display text-lg font-bold text-brand-700"
-          >
-            {name.charAt(0).toUpperCase()}
-          </span>
+          <StudentAvatar
+            photoFileId={canViewPhoto ? student.photo_file_id : null}
+            name={name}
+            size="h-12 w-12"
+          />
           <div className="min-w-0">
             <h1 className="truncate font-display text-xl font-semibold text-brand-900">{name}</h1>
             <p className="text-sm text-slate-500">Matrícula {student.student_number}</p>
