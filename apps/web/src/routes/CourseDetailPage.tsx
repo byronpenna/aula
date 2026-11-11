@@ -10,6 +10,7 @@ import type {
   Course,
   CourseCalendarEvent,
   CourseResources,
+  CourseScheduleSlot,
   CourseStudent,
   FileAttachment,
   Permissions,
@@ -901,6 +902,14 @@ type CalendarItem =
       time: string | null;
       title: string;
       status: Assignment["status"];
+    }
+  | {
+      kind: "schedule";
+      id: string;
+      date: string;
+      time: string | null;
+      title: string;
+      location: string | null;
     };
 
 // Sin hora (fecha importante "todo el día") va antes que cualquier hora
@@ -929,6 +938,41 @@ function dueDateKey(dueAt: string): string {
 }
 const MONTH_LABEL_FORMATTER = new Intl.DateTimeFormat("es", { month: "long", year: "numeric" });
 const WEEKDAY_LABELS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const CALENDAR_ITEM_DOT_CLASS: Record<CalendarItem["kind"], string> = {
+  assignment: "bg-amber-500",
+  event: "bg-brand-500",
+  schedule: "bg-emerald-500",
+};
+
+// Expande las franjas recurrentes del horario de clases (GET /courses/:id/schedule,
+// solo cursos "presencial"/"mixto") en ocurrencias concretas del mes visible —
+// igual criterio que las tareas: nunca se materializan como CourseCalendarEvent,
+// se calculan al vuelo aquí (ver CourseScheduleSlot en academics/models.py).
+function expandScheduleForMonth(
+  slots: CourseScheduleSlot[],
+  year: number,
+  month: number,
+): CalendarItem[] {
+  if (slots.length === 0) return [];
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const items: CalendarItem[] = [];
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, month, day);
+    const weekday = (date.getDay() + 6) % 7; // 0 = lunes, igual que el grid del mes
+    for (const slot of slots) {
+      if (slot.weekday !== weekday) continue;
+      items.push({
+        kind: "schedule",
+        id: `${slot.id}-${dateKey(date)}`,
+        date: dateKey(date),
+        time: formatTimeOnly(slot.start_time),
+        title: "Clase presencial",
+        location: slot.location,
+      });
+    }
+  }
+  return items;
+}
 
 // Calendario del curso (sección nueva): combina las fechas importantes que
 // agrega quien administra el curso (GET /courses/:id/calendar-events) con las
@@ -956,6 +1000,13 @@ function CourseCalendarSection({
   const { data, isLoading, error } = useQuery<CourseCalendarEvent[]>({
     queryKey,
     queryFn: async () => (await apiClient.get(`/courses/${courseId}/calendar-events`)).data,
+  });
+
+  // Cursos "virtual" responden lista vacía (ver academics_service.set_course_schedule),
+  // así que no hace falta conocer la modalidad aquí para decidir si pedirlo.
+  const { data: scheduleSlots } = useQuery<CourseScheduleSlot[]>({
+    queryKey: ["courses", courseId, "schedule"],
+    queryFn: async () => (await apiClient.get(`/courses/${courseId}/schedule`)).data,
   });
 
   const deleteMutation = useMutation({
@@ -987,6 +1038,7 @@ function CourseCalendarSection({
         status: a.status,
       }),
     ),
+    ...expandScheduleForMonth(scheduleSlots ?? [], viewMonth.getFullYear(), viewMonth.getMonth()),
   ].sort(compareCalendarItems);
 
   const itemsByDate = new Map<string, CalendarItem[]>();
@@ -1076,9 +1128,7 @@ function CourseCalendarSection({
                     {dayItems.slice(0, 3).map((item) => (
                       <span
                         key={item.id}
-                        className={`h-1.5 w-1.5 rounded-full ${
-                          item.kind === "assignment" ? "bg-amber-500" : "bg-brand-500"
-                        }`}
+                        className={`h-1.5 w-1.5 rounded-full ${CALENDAR_ITEM_DOT_CLASS[item.kind]}`}
                       />
                     ))}
                   </span>
@@ -1125,14 +1175,21 @@ function CourseCalendarSection({
                   {item.kind === "event" && item.description && (
                     <p className="text-sm text-slate-500">{item.description}</p>
                   )}
+                  {item.kind === "schedule" && item.location && (
+                    <p className="text-sm text-slate-500">{item.location}</p>
+                  )}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {item.kind === "assignment" ? (
-                  <StatusBadge status={item.status} />
-                ) : (
+                {item.kind === "assignment" && <StatusBadge status={item.status} />}
+                {item.kind === "event" && (
                   <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-200">
                     Fecha importante
+                  </span>
+                )}
+                {item.kind === "schedule" && (
+                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                    Clase presencial
                   </span>
                 )}
                 {isStaff && item.kind === "event" && (
@@ -1280,13 +1337,20 @@ function DayEventsModal({
                     {item.kind === "event" && item.description && (
                       <p className="text-xs text-slate-500">{item.description}</p>
                     )}
+                    {item.kind === "schedule" && item.location && (
+                      <p className="text-xs text-slate-500">{item.location}</p>
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    {item.kind === "assignment" ? (
-                      <StatusBadge status={item.status} />
-                    ) : (
+                    {item.kind === "assignment" && <StatusBadge status={item.status} />}
+                    {item.kind === "event" && (
                       <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-200">
                         Fecha importante
+                      </span>
+                    )}
+                    {item.kind === "schedule" && (
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                        Clase presencial
                       </span>
                     )}
                     {isStaff && item.kind === "event" && (
@@ -1517,9 +1581,7 @@ function NewCalendarEventModal({
                         className="flex items-center gap-2 text-xs text-slate-700"
                       >
                         <span
-                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                            item.kind === "assignment" ? "bg-amber-500" : "bg-brand-500"
-                          }`}
+                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${CALENDAR_ITEM_DOT_CLASS[item.kind]}`}
                           aria-hidden="true"
                         />
                         <span className="truncate">{item.title}</span>

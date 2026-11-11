@@ -5,10 +5,12 @@ import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { apiClient } from "../lib/apiClient";
-import { formatDateOnly } from "../lib/dates";
+import { formatDateOnly, formatTimeOnly } from "../lib/dates";
 import type {
   AcademicYear,
   Course,
+  CourseModality,
+  CourseScheduleSlot,
   EnrollmentRecord,
   GradeLevel,
   Permissions,
@@ -1032,6 +1034,14 @@ function SectionEditRow({
 // alumnos en ese curso. Un curso archivado sigue siendo accesible por su ID
 // (historial de tareas/entregas), solo desaparece de este listado.
 
+const COURSE_MODALITY_LABELS: Record<CourseModality, string> = {
+  virtual: "Virtual",
+  presencial: "Presencial",
+  mixto: "Mixto",
+};
+const COURSE_MODALITY_OPTIONS = Object.keys(COURSE_MODALITY_LABELS) as CourseModality[];
+const WEEKDAY_LABELS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+
 const courseSchema = z
   .object({
     academic_year_id: z.string().min(1, "Requerido."),
@@ -1039,6 +1049,7 @@ const courseSchema = z
     subject_id: z.string().min(1, "Requerido."),
     starts_on: z.string().min(1, "Requerido."),
     ends_on: z.string().min(1, "Requerido."),
+    modality: z.enum(["virtual", "presencial", "mixto"]),
   })
   .refine((v) => v.ends_on > v.starts_on, {
     message: "Debe ser posterior a la fecha de inicio.",
@@ -1050,6 +1061,7 @@ const courseEditSchema = z
   .object({
     starts_on: z.string().min(1, "Requerido."),
     ends_on: z.string().min(1, "Requerido."),
+    modality: z.enum(["virtual", "presencial", "mixto"]),
   })
   .refine((v) => v.ends_on > v.starts_on, {
     message: "Debe ser posterior a la fecha de inicio.",
@@ -1100,7 +1112,10 @@ function CoursesSection() {
     reset,
     control,
     formState: { errors, isSubmitting },
-  } = useForm<CourseForm>({ resolver: zodResolver(courseSchema) });
+  } = useForm<CourseForm>({
+    resolver: zodResolver(courseSchema),
+    defaultValues: { modality: "virtual" },
+  });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["courses"] });
 
@@ -1175,6 +1190,15 @@ function CoursesSection() {
             )}
           />
         </Field>
+        <Field label="Modalidad" error={errors.modality?.message}>
+          <select className={inputClass} {...register("modality")}>
+            {COURSE_MODALITY_OPTIONS.map((modality) => (
+              <option key={modality} value={modality}>
+                {COURSE_MODALITY_LABELS[modality]}
+              </option>
+            ))}
+          </select>
+        </Field>
         <div className="flex items-end">
           <button
             type="submit"
@@ -1201,6 +1225,7 @@ function CoursesSection() {
               <th className={th}>Sección</th>
               <th className={th}>Año</th>
               <th className={th}>Docente</th>
+              <th className={th}>Modalidad</th>
               <th className={th}>Inicio</th>
               <th className={th}>Fin</th>
               <th className={th}>Estado</th>
@@ -1254,12 +1279,17 @@ function CourseRows({
   const [teacherToAssign, setTeacherToAssign] = useState("");
 
   const {
+    register,
     handleSubmit,
     control,
     formState: { errors, isSubmitting },
   } = useForm<CourseEditForm>({
     resolver: zodResolver(courseEditSchema),
-    defaultValues: { starts_on: course.starts_on, ends_on: course.ends_on },
+    defaultValues: {
+      starts_on: course.starts_on,
+      ends_on: course.ends_on,
+      modality: course.modality,
+    },
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["courses"] });
@@ -1300,6 +1330,7 @@ function CourseRows({
             <span className="text-amber-700">Sin asignar</span>
           )}
         </td>
+        <td className={td}>{COURSE_MODALITY_LABELS[course.modality]}</td>
         <td className={td}>{formatDateOnly(course.starts_on)}</td>
         <td className={td}>{formatDateOnly(course.ends_on)}</td>
         <td className={td}>
@@ -1319,7 +1350,7 @@ function CourseRows({
       </tr>
       {expanded && (
         <tr className="border-b border-slate-100 bg-brand-50/40">
-          <td colSpan={8} className="space-y-3 p-3">
+          <td colSpan={9} className="space-y-3 p-3">
             <form
               onSubmit={handleSubmit((values) => updateMutation.mutate(values))}
               className="grid gap-2 sm:grid-cols-3"
@@ -1343,13 +1374,22 @@ function CourseRows({
                   )}
                 />
               </Field>
+              <Field label="Modalidad" error={errors.modality?.message}>
+                <select className={inputClass} {...register("modality")}>
+                  {COURSE_MODALITY_OPTIONS.map((modality) => (
+                    <option key={modality} value={modality}>
+                      {COURSE_MODALITY_LABELS[modality]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
               <div className="flex items-end">
                 <button
                   type="submit"
                   disabled={isSubmitting}
                   className="focus-ring w-full rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
                 >
-                  Guardar fechas
+                  Guardar
                 </button>
               </div>
               {updateMutation.isError && (
@@ -1358,6 +1398,10 @@ function CourseRows({
                 </div>
               )}
             </form>
+
+            {course.modality !== "virtual" && (
+              <CourseScheduleEditor courseId={course.id} modality={course.modality} />
+            )}
 
             <div className="border-t border-brand-100 pt-2">
               <p className="mb-1 text-xs font-medium text-brand-700">
@@ -1391,6 +1435,152 @@ function CourseRows({
         </tr>
       )}
     </>
+  );
+}
+
+// Horario de clases presencial (sección nueva: modalidad y horario): solo
+// aplica a cursos "presencial"/"mixto" (el formulario ni se muestra si la
+// modalidad es "virtual", ver CourseRows). El backend expande estas franjas
+// recurrentes en el calendario del alumno (CourseDetailPage.tsx), no se
+// materializan como CourseCalendarEvent individuales.
+
+type ScheduleSlotDraft = {
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  location: string;
+};
+
+function CourseScheduleEditor({
+  courseId,
+  modality,
+}: {
+  courseId: string;
+  modality: CourseModality;
+}) {
+  const { data, isLoading, error } = useQuery<CourseScheduleSlot[]>({
+    queryKey: ["courses", courseId, "schedule"],
+    queryFn: async () => (await apiClient.get(`/courses/${courseId}/schedule`)).data,
+  });
+
+  return (
+    <div className="border-t border-brand-100 pt-2">
+      <p className="mb-1 text-xs font-medium text-brand-700">
+        Horario de clases {modality === "mixto" && "(franjas presenciales)"}
+      </p>
+      {isLoading && <LoadingState label="Cargando horario…" />}
+      {error && <ErrorState error={error} />}
+      {data && <CourseScheduleForm courseId={courseId} initialSlots={data} />}
+    </div>
+  );
+}
+
+function CourseScheduleForm({
+  courseId,
+  initialSlots,
+}: {
+  courseId: string;
+  initialSlots: CourseScheduleSlot[];
+}) {
+  const queryClient = useQueryClient();
+  const [slots, setSlots] = useState<ScheduleSlotDraft[]>(() =>
+    initialSlots.map((slot) => ({
+      weekday: slot.weekday,
+      start_time: formatTimeOnly(slot.start_time),
+      end_time: formatTimeOnly(slot.end_time),
+      location: slot.location ?? "",
+    })),
+  );
+
+  const saveMutation = useMutation({
+    mutationFn: async () =>
+      (
+        await apiClient.put(`/courses/${courseId}/schedule`, {
+          slots: slots.map((slot) => ({
+            weekday: slot.weekday,
+            start_time: slot.start_time,
+            end_time: slot.end_time,
+            location: slot.location.trim() || null,
+          })),
+        })
+      ).data,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["courses", courseId, "schedule"] }),
+  });
+
+  function addSlot() {
+    setSlots((prev) => [...prev, { weekday: 0, start_time: "07:00", end_time: "08:00", location: "" }]);
+  }
+  function removeSlot(index: number) {
+    setSlots((prev) => prev.filter((_, i) => i !== index));
+  }
+  function updateSlot(index: number, patch: Partial<ScheduleSlotDraft>) {
+    setSlots((prev) => prev.map((slot, i) => (i === index ? { ...slot, ...patch } : slot)));
+  }
+
+  return (
+    <div>
+      {slots.length === 0 && <p className="mb-2 text-xs text-slate-500">Sin franjas todavía.</p>}
+      <div className="space-y-2">
+        {slots.map((slot, index) => (
+          <div key={index} className="flex flex-wrap items-end gap-2">
+            <Field label="Día">
+              <select
+                className={inputClass}
+                value={slot.weekday}
+                onChange={(e) => updateSlot(index, { weekday: Number(e.target.value) })}
+              >
+                {WEEKDAY_LABELS.map((label, day) => (
+                  <option key={label} value={day}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Inicio">
+              <input
+                type="time"
+                className={inputClass}
+                value={slot.start_time}
+                onChange={(e) => updateSlot(index, { start_time: e.target.value })}
+              />
+            </Field>
+            <Field label="Fin">
+              <input
+                type="time"
+                className={inputClass}
+                value={slot.end_time}
+                onChange={(e) => updateSlot(index, { end_time: e.target.value })}
+              />
+            </Field>
+            <Field label="Aula / lugar (opcional)">
+              <input
+                className={inputClass}
+                value={slot.location}
+                onChange={(e) => updateSlot(index, { location: e.target.value })}
+              />
+            </Field>
+            <button type="button" onClick={() => removeSlot(index)} className={rowActionBtn}>
+              Quitar
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <button type="button" onClick={addSlot} className={rowActionBtn}>
+          Agregar franja
+        </button>
+        <button
+          type="button"
+          disabled={saveMutation.isPending}
+          onClick={() => saveMutation.mutate()}
+          className="focus-ring rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+        >
+          Guardar horario
+        </button>
+      </div>
+      {saveMutation.isError && <ErrorState error={saveMutation.error} />}
+    </div>
   );
 }
 

@@ -14,6 +14,7 @@ from app.modules.academics import service as academics_service
 from app.modules.academics.models import (
     AcademicYear,
     Course,
+    CourseScheduleSlot,
     CourseTeacher,
     Enrollment,
     GradeLevel,
@@ -28,6 +29,8 @@ from app.modules.academics.schemas import (
     CourseEnrollStudent,
     CourseOut,
     CourseRename,
+    CourseScheduleSet,
+    CourseScheduleSlotOut,
     CourseStudentOut,
     CourseTeacherCreate,
     CourseTeacherOut,
@@ -267,6 +270,7 @@ def create_course(
         payload.starts_on,
         payload.ends_on,
         request.state.request_id,
+        modality=payload.modality,
     )
     return _course_out(db, course)
 
@@ -464,3 +468,29 @@ def list_student_courses(
 ) -> list[CourseOut]:
     courses = academics_service.list_courses_for_student(db, current, user.id, student_id)
     return [_course_out(db, course) for course in courses]
+
+
+@router.get("/courses/{course_id}/schedule", response_model=list[CourseScheduleSlotOut])
+def get_course_schedule(
+    course_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> list[CourseScheduleSlot]:
+    """Cualquiera con acceso al curso lo ve (alumno/tutor incluidos, igual
+    criterio que calendar-events) — para que el horario aparezca en el
+    calendario del alumno sin necesitar academics:manage."""
+    return academics_service.get_course_schedule(db, current, user.id, course_id)
+
+
+@router.put("/courses/{course_id}/schedule", response_model=list[CourseScheduleSlotOut])
+def set_course_schedule(
+    course_id: uuid.UUID,
+    payload: CourseScheduleSet,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(ACADEMICS_MANAGE)),
+) -> list[CourseScheduleSlot]:
+    return academics_service.set_course_schedule(
+        db, current, course_id, payload.slots, request.state.request_id
+    )

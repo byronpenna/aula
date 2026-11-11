@@ -82,6 +82,8 @@ export interface LinkedStudent {
   relationship_label: string;
 }
 
+export type CourseModality = "virtual" | "presencial" | "mixto";
+
 export interface Course {
   id: string;
   section_id: string;
@@ -91,7 +93,17 @@ export interface Course {
   ends_on: string;
   status: string;
   name: string | null;
+  modality: CourseModality;
   teacher_user_ids: string[];
+}
+
+export interface CourseScheduleSlot {
+  id: string;
+  course_id: string;
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  location: string | null;
 }
 
 export interface Teacher {

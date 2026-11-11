@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, time
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
+
+CourseModality = Literal["virtual", "presencial", "mixto"]
 
 
 class AcademicYearCreate(BaseModel):
@@ -90,6 +93,7 @@ class CourseCreate(BaseModel):
     academic_year_id: uuid.UUID
     starts_on: date
     ends_on: date
+    modality: CourseModality = "virtual"
 
 
 class CourseUpdate(BaseModel):
@@ -98,6 +102,7 @@ class CourseUpdate(BaseModel):
     academic_year_id: uuid.UUID | None = None
     starts_on: date | None = None
     ends_on: date | None = None
+    modality: CourseModality | None = None
 
 
 class CourseOut(BaseModel):
@@ -110,6 +115,7 @@ class CourseOut(BaseModel):
     ends_on: date
     status: str
     name: str | None = None
+    modality: CourseModality
     # Calculado en el router (sección 6): antes de matricular alumnos en un curso debe
     # existir al menos un docente activo asignado; el frontend usa esto para bloquear
     # la matrícula sin necesidad de una llamada aparte por curso.
@@ -118,6 +124,27 @@ class CourseOut(BaseModel):
 
 class CourseRename(BaseModel):
     name: str
+
+
+class CourseScheduleSlotIn(BaseModel):
+    weekday: int
+    start_time: time
+    end_time: time
+    location: str | None = None
+
+
+class CourseScheduleSlotOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    course_id: uuid.UUID
+    weekday: int
+    start_time: time
+    end_time: time
+    location: str | None = None
+
+
+class CourseScheduleSet(BaseModel):
+    slots: list[CourseScheduleSlotIn] = []
 
 
 class CourseTeacherCreate(BaseModel):

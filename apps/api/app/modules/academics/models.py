@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, time
 
-from sqlalchemy import ForeignKey, UniqueConstraint
+from sqlalchemy import ForeignKey, Time, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -99,6 +99,35 @@ class Course(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
     # genérico del curso, para que el docente encargado también pueda ponerlo sin
     # darle permiso de mover el curso de sección/materia/año (academics:manage).
     name: Mapped[str | None] = mapped_column(nullable=True)
+    # "virtual" | "presencial" | "mixto". Solo "presencial"/"mixto" admiten horario
+    # de clases (ver CourseScheduleSlot más abajo); un curso "virtual" puede tener
+    # slots ya cargados de un cambio de modalidad anterior, el service nunca los
+    # borra automáticamente (ver academics_service.set_course_schedule), pero el
+    # frontend solo los pide/ofrece crear cuando la modalidad no es "virtual".
+    modality: Mapped[str] = mapped_column(nullable=False, default="virtual")
+
+
+class CourseScheduleSlot(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
+    """Franja recurrente semanal de clase presencial de un curso (ej. "Lunes
+    07:00-08:30, Aula 3"). Sin dependientes (a diferencia de ResourceSection o
+    Course): reemplazar el horario completo de un curso es un DELETE real de
+    las franjas anteriores + INSERT de las nuevas, nunca baja lógica (ver
+    academics_service.set_course_schedule). El frontend expande estas franjas
+    en ocurrencias del mes visible para pintarlas en CourseCalendarSection,
+    igual que ya hace con las tareas — no se materializan como
+    CourseCalendarEvent individuales."""
+
+    __tablename__ = "course_schedule_slots"
+
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("courses.id"), nullable=False, index=True
+    )
+    # 0 = lunes … 6 = domingo, mismo criterio que el grid de
+    # CourseCalendarSection.tsx (`(getDay() + 6) % 7`).
+    weekday: Mapped[int] = mapped_column(nullable=False)
+    start_time: Mapped[time] = mapped_column(Time, nullable=False)
+    end_time: Mapped[time] = mapped_column(Time, nullable=False)
+    location: Mapped[str | None] = mapped_column(nullable=True)
 
 
 class CourseTeacher(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):

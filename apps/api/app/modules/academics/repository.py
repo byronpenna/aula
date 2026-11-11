@@ -9,6 +9,7 @@ from app.modules.academics.models import (
     AcademicYear,
     Course,
     CourseEnrollment,
+    CourseScheduleSlot,
     CourseTeacher,
     Enrollment,
     GradeLevel,
@@ -304,6 +305,24 @@ def list_students_not_in_course(
         .order_by(StudentProfile.student_number)
     )
     return [(row[0], row[1]) for row in db.execute(stmt).all()]
+
+
+def list_schedule_slots(
+    db: Session, school_id: uuid.UUID, course_id: uuid.UUID
+) -> list[CourseScheduleSlot]:
+    stmt = (
+        select(CourseScheduleSlot)
+        .where(CourseScheduleSlot.school_id == school_id, CourseScheduleSlot.course_id == course_id)
+        .order_by(CourseScheduleSlot.weekday, CourseScheduleSlot.start_time)
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def delete_schedule_slots_for_course(
+    db: Session, school_id: uuid.UUID, course_id: uuid.UUID
+) -> None:
+    for slot in list_schedule_slots(db, school_id, course_id):
+        db.delete(slot)
 
 
 def find_enrollment(

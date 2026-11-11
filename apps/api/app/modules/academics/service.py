@@ -20,6 +20,7 @@ from app.modules.academics.models import (
     AcademicYear,
     Course,
     CourseEnrollment,
+    CourseScheduleSlot,
     CourseTeacher,
     Enrollment,
     GradeLevel,
@@ -29,6 +30,7 @@ from app.modules.academics.models import (
 from app.modules.academics.schemas import (
     AcademicYearCreate,
     AcademicYearUpdate,
+    CourseScheduleSlotIn,
     CourseUpdate,
     EnrollmentCreate,
     GradeLevelUpdate,
@@ -307,7 +309,7 @@ def set_section_status(
 def create_course(
     db: Session, current: CurrentMembership, section_id: uuid.UUID,
     subject_id: uuid.UUID, academic_year_id: uuid.UUID, starts_on, ends_on,
-    request_id: str | None,
+    request_id: str | None, modality: str = "virtual",
 ) -> Course:
     section = academics_repo.get_section(db, current.school_id, section_id)
     if section is None:
@@ -326,6 +328,7 @@ def create_course(
         academic_year_id=academic_year_id,
         starts_on=starts_on,
         ends_on=ends_on,
+        modality=modality,
     )
     db.add(course)
     db.flush()
@@ -547,6 +550,68 @@ def create_enrollment(
     db.commit()
     db.refresh(enrollment)
     return enrollment
+
+
+def get_course_schedule(
+    db: Session, current: CurrentMembership, user_id: uuid.UUID, course_id: uuid.UUID
+) -> list[CourseScheduleSlot]:
+    course = academics_repo.get_course(db, current.school_id, course_id)
+    if course is None:
+        raise NotFoundError("El curso indicado no existe en este colegio.")
+    require_course_access(db, current, user_id, course)
+    return academics_repo.list_schedule_slots(db, current.school_id, course_id)
+
+
+def set_course_schedule(
+    db: Session,
+    current: CurrentMembership,
+    course_id: uuid.UUID,
+    slots: list[CourseScheduleSlotIn],
+    request_id: str | None,
+) -> list[CourseScheduleSlot]:
+    """Reemplaza el horario completo del curso (sección nueva: modalidad y
+    horario). Sin dependientes (a diferencia de Course/ResourceSection), así que
+    se borra todo lo anterior y se insertan las franjas nuevas en la misma
+    transacción, nunca un merge franja por franja. Solo admite horario cuando la
+    modalidad no es "virtual" — un curso 100% virtual no tiene aula ni horario
+    fijo que mostrar en el calendario del alumno."""
+    course = academics_repo.get_course(db, current.school_id, course_id)
+    if course is None:
+        raise NotFoundError("El curso indicado no existe en este colegio.")
+    if course.modality == "virtual" and slots:
+        raise UnprocessableError(
+            "Un curso virtual no admite horario de clases; cambia la modalidad a "
+            "presencial o mixto primero."
+        )
+
+    for slot in slots:
+        if not 0 <= slot.weekday <= 6:
+            raise UnprocessableError("weekday debe estar entre 0 (lunes) y 6 (domingo).")
+        if slot.end_time <= slot.start_time:
+            raise UnprocessableError("end_time debe ser posterior a start_time.")
+
+    academics_repo.delete_schedule_slots_for_course(db, current.school_id, course_id)
+    db.flush()
+    created = [
+        CourseScheduleSlot(
+            school_id=current.school_id,
+            course_id=course_id,
+            weekday=slot.weekday,
+            start_time=slot.start_time,
+            end_time=slot.end_time,
+            location=(slot.location or "").strip() or None,
+        )
+        for slot in slots
+    ]
+    db.add_all(created)
+    _record_audit(
+        db, current, action="course.schedule.set", target_type="course",
+        target_id=str(course_id), request_id=request_id,
+    )
+    db.commit()
+    for row in created:
+        db.refresh(row)
+    return created
 
 
 def require_course_access(
