@@ -133,10 +133,40 @@ class StudentProfile(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
     )
 
 
+class GuardianProfile(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
+    """Ficha de tutor (Administración > Tutores): mismo criterio que
+    `StudentProfile` — existe como contacto independientemente de si ya tiene
+    cuenta de acceso (`user_id` nullable), porque la mayoría de tutores nunca
+    necesita iniciar sesión, solo que el colegio tenga su teléfono/correo a
+    mano."""
+
+    __tablename__ = "guardian_profiles"
+
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    full_name: Mapped[str] = mapped_column(nullable=False)
+    email: Mapped[str | None] = mapped_column(nullable=True)
+    phone: Mapped[str | None] = mapped_column(nullable=True)
+    profession: Mapped[str | None] = mapped_column(nullable=True)
+    workplace: Mapped[str | None] = mapped_column(nullable=True)
+    national_id: Mapped[str | None] = mapped_column(nullable=True)
+    address: Mapped[str | None] = mapped_column(nullable=True)
+    notes: Mapped[str | None] = mapped_column(nullable=True)
+    photo_file_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("files.id"), nullable=True
+    )
+
+
 class GuardianStudentLink(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
     __tablename__ = "guardian_student_links"
 
-    guardian_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    # Apunta a GuardianProfile, no a User directamente (ver GuardianProfile más
+    # arriba) — un vínculo siempre necesita un perfil, pero el perfil ya no
+    # necesita una cuenta de acceso.
+    guardian_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("guardian_profiles.id")
+    )
     student_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("student_profiles.id")
     )

@@ -472,9 +472,10 @@ def list_visible_courses(
         if profile:
             student_ids.append(profile.id)
     if "guardian" in current.role_codes:
-        for link in identity_repo.get_active_guardian_links(db, user_id):
-            if link.school_id == current.school_id:
-                student_ids.append(link.student_id)
+        for link in identity_repo.get_active_guardian_links_for_user(
+            db, current.school_id, user_id
+        ):
+            student_ids.append(link.student_id)
 
     return academics_repo.list_courses_for_students(db, current.school_id, student_ids)
 
@@ -565,10 +566,10 @@ def require_course_access(
         if profile and academics_repo.is_student_enrolled_in_course(db, course.id, profile.id):
             return
     if "guardian" in current.role_codes:
-        for link in identity_repo.get_active_guardian_links(db, user_id):
-            if link.school_id == current.school_id and academics_repo.is_student_enrolled_in_course(
-                db, course.id, link.student_id
-            ):
+        for link in identity_repo.get_active_guardian_links_for_user(
+            db, current.school_id, user_id
+        ):
+            if academics_repo.is_student_enrolled_in_course(db, course.id, link.student_id):
                 return
     raise NotFoundError("El curso indicado no existe o no tienes acceso.")
 
@@ -723,8 +724,10 @@ def require_student_access(
         if profile and profile.id == student_id:
             return
     if "guardian" in current.role_codes:
-        for link in identity_repo.get_active_guardian_links(db, user_id):
-            if link.school_id == current.school_id and link.student_id == student_id:
+        for link in identity_repo.get_active_guardian_links_for_user(
+            db, current.school_id, user_id
+        ):
+            if link.student_id == student_id:
                 return
     if "teacher" in current.role_codes:
         taught = academics_repo.list_courses_taught_by(db, current.school_id, user_id)

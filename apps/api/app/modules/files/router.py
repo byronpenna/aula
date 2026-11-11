@@ -136,6 +136,26 @@ async def upload_student_photo(
     )
 
 
+@router.post("/guardians/{guardian_id}/photo", response_model=FileOut)
+async def upload_guardian_photo(
+    guardian_id: uuid.UUID,
+    upload: UploadFile = FastAPIFile(...),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    current: CurrentMembership = Depends(get_current_membership),
+):
+    content = await upload.read()
+    return files_service.upload_guardian_photo(
+        db,
+        settings,
+        current,
+        guardian_id,
+        upload.filename or "foto",
+        upload.content_type or "application/octet-stream",
+        content,
+    )
+
+
 @router.get("/files/{file_id}/download", response_model=FileDownloadOut)
 def download_file(
     file_id: uuid.UUID,

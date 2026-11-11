@@ -123,20 +123,20 @@ def test_guardian_link_create_list_and_revoke(db_session, client, unique_suffix)
     school = f.create_school(db_session, f"Escuela {unique_suffix}")
     admin = _admin(db_session, school, unique_suffix)
     headers = f.auth_headers(admin, school_id=school.id)
-    guardian = f.create_user(db_session, display_name="Tutor", cognito_sub=f"g-{unique_suffix}")
-    f.add_membership(db_session, school=school, user=guardian, role_codes=["guardian"])
-    db_session.commit()
 
     created = client.post(
         "/api/v1/students", headers=headers, json={"student_number": f"N-{unique_suffix}"}
     )
     student_id = created.json()["id"]
+    guardian_id = client.post(
+        "/api/v1/guardians", headers=headers, json={"full_name": "Tutor"}
+    ).json()["id"]
 
     link = client.post(
         f"/api/v1/students/{student_id}/guardians",
         headers=headers,
         json={
-            "guardian_user_id": str(guardian.id),
+            "guardian_id": guardian_id,
             "relationship_label": "madre",
             "valid_from": "2026-01-01",
         },
@@ -149,7 +149,7 @@ def test_guardian_link_create_list_and_revoke(db_session, client, unique_suffix)
     dup = client.post(
         f"/api/v1/students/{student_id}/guardians",
         headers=headers,
-        json={"guardian_user_id": str(guardian.id), "valid_from": "2026-01-01"},
+        json={"guardian_id": guardian_id, "valid_from": "2026-01-01"},
     )
     assert dup.status_code == 409
 
@@ -167,7 +167,7 @@ def test_guardian_link_create_list_and_revoke(db_session, client, unique_suffix)
     relink = client.post(
         f"/api/v1/students/{student_id}/guardians",
         headers=headers,
-        json={"guardian_user_id": str(guardian.id), "valid_from": "2026-02-01"},
+        json={"guardian_id": guardian_id, "valid_from": "2026-02-01"},
     )
     assert relink.status_code == 200, relink.text
 
@@ -185,18 +185,21 @@ def test_guardian_link_requires_permission_and_valid_guardian(db_session, client
         "/api/v1/students", headers=headers, json={"student_number": f"N-{unique_suffix}"}
     )
     student_id = created.json()["id"]
+    guardian_id = client.post(
+        "/api/v1/guardians", headers=headers, json={"full_name": "Tutor"}
+    ).json()["id"]
 
     forbidden = client.post(
         f"/api/v1/students/{student_id}/guardians",
         headers=f.auth_headers(teacher, school_id=school.id),
-        json={"guardian_user_id": str(teacher.id), "valid_from": "2026-01-01"},
+        json={"guardian_id": guardian_id, "valid_from": "2026-01-01"},
     )
     assert forbidden.status_code == 403
 
     not_found = client.post(
         f"/api/v1/students/{student_id}/guardians",
         headers=headers,
-        json={"guardian_user_id": str(uuid.uuid4()), "valid_from": "2026-01-01"},
+        json={"guardian_id": str(uuid.uuid4()), "valid_from": "2026-01-01"},
     )
     assert not_found.status_code == 404
 
@@ -251,7 +254,7 @@ def test_teacher_sharing_course_can_view_guardians_readonly(db_session, client, 
     teacher_create = client.post(
         f"/api/v1/students/{student_id}/guardians",
         headers=f.auth_headers(teacher, school_id=school.id),
-        json={"guardian_user_id": str(guardian.id), "valid_from": "2026-01-01"},
+        json={"guardian_id": str(uuid.uuid4()), "valid_from": "2026-01-01"},
     )
     assert teacher_create.status_code == 403
 

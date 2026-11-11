@@ -56,9 +56,10 @@ def _resolve_student_ids(
         if profile is not None:
             ids.append(profile.id)
     if "guardian" in current.role_codes:
-        for link in identity_repo.get_active_guardian_links(db, user_id):
-            if link.school_id == current.school_id:
-                ids.append(link.student_id)
+        for link in identity_repo.get_active_guardian_links_for_user(
+            db, current.school_id, user_id
+        ):
+            ids.append(link.student_id)
     return ids
 
 

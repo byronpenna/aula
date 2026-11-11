@@ -1,4 +1,5 @@
 import { useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -9,6 +10,7 @@ import type {
   AcademicYear,
   EnrollmentRecord,
   GuardianLink,
+  GuardianProfile,
   Permissions,
   Section,
   StudentProfile,
@@ -474,21 +476,26 @@ function StudentAccountCard({ student }: { student: StudentProfile }) {
 }
 
 const guardianLinkSchema = z.object({
-  guardian_user_id: z.string().min(1, "Requerido."),
+  guardian_id: z.string().min(1, "Requerido."),
   relationship_label: z.string().min(1, "Requerido."),
   valid_from: z.string().min(1, "Requerido."),
 });
 type GuardianLinkForm = z.infer<typeof guardianLinkSchema>;
 
+// El teléfono/email/etc. de cada tutor ya no se edita aquí: vive en su propia
+// ficha (Administración > Tutores, GuardiansAdminPage.tsx) porque son datos
+// del tutor, no del vínculo — aplican a todos los alumnos que tenga
+// asignados, no solo a este. Este widget pasa a ser solo para elegir/quitar
+// cuáles tutores están vinculados a este alumno puntual.
 function StudentGuardiansCard({ student }: { student: StudentProfile }) {
   const queryClient = useQueryClient();
   const guardians = useQuery<GuardianLink[]>({
     queryKey: ["students", student.id, "guardians"],
     queryFn: async () => (await apiClient.get(`/students/${student.id}/guardians`)).data,
   });
-  const guardianUsers = useQuery<UserListItem[]>({
-    queryKey: ["users", { role: "guardian" }],
-    queryFn: async () => (await apiClient.get("/users", { params: { role: "guardian" } })).data,
+  const guardianProfiles = useQuery<GuardianProfile[]>({
+    queryKey: ["guardians"],
+    queryFn: async () => (await apiClient.get("/guardians")).data,
   });
 
   const {
@@ -533,15 +540,16 @@ function StudentGuardiansCard({ student }: { student: StudentProfile }) {
           {active.map((link) => (
             <li key={link.id} className="flex items-start justify-between gap-2 text-sm">
               <div className="min-w-0">
-                <span>
-                  {link.guardian_display_name ?? "Usuario eliminado"}
-                  <span className="ml-1 text-xs text-slate-500">({link.relationship_label})</span>
-                </span>
-                <GuardianPhoneEditor
-                  guardianUserId={link.guardian_user_id}
-                  currentPhone={link.guardian_phone}
-                  onSaved={invalidate}
-                />
+                <Link
+                  to={`/admin/guardians?selected=${link.guardian_id}`}
+                  className="focus-ring hover:underline"
+                >
+                  {link.guardian_display_name ?? "Tutor eliminado"}
+                </Link>
+                <span className="ml-1 text-xs text-slate-500">({link.relationship_label})</span>
+                <p className="text-xs text-slate-500">
+                  {link.guardian_phone ?? "Sin teléfono registrado"}
+                </p>
               </div>
               <button
                 type="button"
@@ -564,12 +572,12 @@ function StudentGuardiansCard({ student }: { student: StudentProfile }) {
         className="grid gap-3 sm:grid-cols-4"
         noValidate
       >
-        <Field label="Tutor" error={errors.guardian_user_id?.message}>
-          <select className={inputClass} {...register("guardian_user_id")}>
+        <Field label="Tutor" error={errors.guardian_id?.message}>
+          <select className={inputClass} {...register("guardian_id")}>
             <option value="">Selecciona…</option>
-            {guardianUsers.data?.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.display_name}
+            {guardianProfiles.data?.map((guardian) => (
+              <option key={guardian.id} value={guardian.id}>
+                {guardian.full_name}
               </option>
             ))}
           </select>
@@ -602,51 +610,16 @@ function StudentGuardiansCard({ student }: { student: StudentProfile }) {
         </div>
       </form>
       {createMutation.isError && <ErrorState error={createMutation.error} />}
+      {guardianProfiles.data && guardianProfiles.data.length === 0 && (
+        <p className="mt-2 text-xs text-slate-500">
+          Todavía no hay tutores registrados.{" "}
+          <Link to="/admin/guardians" className="underline">
+            Crear uno en Administración &gt; Tutores
+          </Link>
+          .
+        </p>
+      )}
     </Card>
-  );
-}
-
-// Teléfono del tutor (para el botón de WhatsApp en la ficha del alumno, ver
-// StudentDetailPage.tsx): se edita aquí porque vive en `User.phone` —del
-// tutor, no del vínculo— así que cambiarlo aplica a todos los alumnos que
-// tenga asignados, no solo a este. `PATCH /users/{id}` exige USERS_MANAGE,
-// más angosto que GUARDIAN_LINK_MANAGE; un coordinador sin ese permiso verá
-// el campo pero el guardado le devolverá 403, igual que ya ocurre con el
-// @handle en StudentAccountCard.
-function GuardianPhoneEditor({
-  guardianUserId,
-  currentPhone,
-  onSaved,
-}: {
-  guardianUserId: string;
-  currentPhone: string | null;
-  onSaved: () => void;
-}) {
-  const [value, setValue] = useState(currentPhone ?? "");
-  const mutation = useMutation({
-    mutationFn: async () =>
-      (await apiClient.patch(`/users/${guardianUserId}`, { phone: value.trim() || null })).data,
-    onSuccess: onSaved,
-  });
-
-  return (
-    <div className="mt-1 flex items-center gap-1.5">
-      <input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="Teléfono (WhatsApp), p. ej. +50370000000"
-        className="w-56 rounded-md border border-slate-300 px-2 py-1 text-xs"
-      />
-      <button
-        type="button"
-        onClick={() => mutation.mutate()}
-        disabled={mutation.isPending || value.trim() === (currentPhone ?? "")}
-        className="focus-ring rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 disabled:opacity-50"
-      >
-        Guardar
-      </button>
-      {mutation.isError && <span className="text-xs text-red-600">No se pudo guardar.</span>}
-    </div>
   );
 }
 

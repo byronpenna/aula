@@ -73,6 +73,63 @@ class StudentProfileUpdate(BaseModel):
     user_id: uuid.UUID | None = None
 
 
+class GuardianProfileStudentOut(BaseModel):
+    """Un alumno vinculado, tal como aparece embebido en `GuardianProfileOut` —
+    `grade_level_name` es mejor esfuerzo (ver academics/repository.py::
+    get_grade_level_names_for_students), None si el alumno no tiene matrícula
+    activa."""
+
+    id: uuid.UUID
+    display_name: str | None
+    student_number: str
+    grade_level_name: str | None
+
+
+class GuardianProfileOut(BaseModel):
+    id: uuid.UUID
+    full_name: str
+    email: str | None
+    phone: str | None
+    profession: str | None
+    workplace: str | None
+    national_id: str | None
+    address: str | None
+    notes: str | None
+    photo_file_id: uuid.UUID | None
+    user_id: uuid.UUID | None
+    students: list[GuardianProfileStudentOut] = []
+
+
+class GuardianProfileCreate(BaseModel):
+    """`user_id` opcional a propósito, mismo criterio que `StudentProfileCreate`:
+    la mayoría de tutores existe como contacto, nunca como cuenta de acceso."""
+
+    full_name: str
+    email: str | None = None
+    phone: str | None = None
+    profession: str | None = None
+    workplace: str | None = None
+    national_id: str | None = None
+    address: str | None = None
+    notes: str | None = None
+    user_id: uuid.UUID | None = None
+
+
+class GuardianProfileUpdate(BaseModel):
+    """Todos los campos opcionales vía `exclude_unset`, igual convención que
+    `StudentProfileUpdate`."""
+
+    full_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    profession: str | None = None
+    workplace: str | None = None
+    national_id: str | None = None
+    address: str | None = None
+    notes: str | None = None
+    user_id: uuid.UUID | None = None
+
+
 class StudentDetailOut(BaseModel):
     """Ficha de alumno (sección 6): mismo guard que sus matrículas/entregas —
     admin/coordinación, el propio alumno, su tutor vinculado, o un docente que
@@ -196,9 +253,10 @@ class AuditEventOut(BaseModel):
 
 class GuardianLinkCreate(BaseModel):
     """`student_id` no va aquí: ya viaja en la URL (`POST /students/{id}/guardians`),
-    igual convención que `RoleAssignmentCreate` no repite el `user_id` del path."""
+    igual convención que `RoleAssignmentCreate` no repite el `user_id` del path.
+    `guardian_id` es el id de un `GuardianProfile` (ver models.py), no de un `User`."""
 
-    guardian_user_id: uuid.UUID
+    guardian_id: uuid.UUID
     relationship_label: str = "guardian"
     valid_from: date
     valid_to: date | None = None
@@ -206,7 +264,7 @@ class GuardianLinkCreate(BaseModel):
 
 class GuardianLinkOut(BaseModel):
     id: uuid.UUID
-    guardian_user_id: uuid.UUID
+    guardian_id: uuid.UUID
     guardian_display_name: str | None
     guardian_phone: str | None
     student_id: uuid.UUID

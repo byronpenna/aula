@@ -251,6 +251,31 @@ def list_enrollments_for_year(
     return list(db.execute(stmt).scalars().all())
 
 
+def get_grade_level_names_for_students(
+    db: Session, school_id: uuid.UUID, student_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """Mejor esfuerzo para agrupar visualmente (Administración > Tutores): si un
+    alumno tiene más de una Enrollment activa (no hay constraint única que lo
+    impida, ver el modelo), se usa la primera que aparezca — esto no es una
+    regla de negocio estricta, solo para mostrar un grado representativo."""
+    if not student_ids:
+        return {}
+    stmt = (
+        select(Enrollment.student_id, GradeLevel.name)
+        .join(Section, Section.id == Enrollment.section_id)
+        .join(GradeLevel, GradeLevel.id == Section.grade_level_id)
+        .where(
+            Enrollment.school_id == school_id,
+            Enrollment.student_id.in_(student_ids),
+            Enrollment.status == "active",
+        )
+    )
+    result: dict[uuid.UUID, str] = {}
+    for student_id, grade_level_name in db.execute(stmt).all():
+        result.setdefault(student_id, grade_level_name)
+    return result
+
+
 def get_enrollment_for_student_year(
     db: Session, school_id: uuid.UUID, student_id: uuid.UUID, academic_year_id: uuid.UUID
 ) -> Enrollment | None:

@@ -189,7 +189,7 @@ export interface StudentProfile {
 
 export interface GuardianLink {
   id: string;
-  guardian_user_id: string;
+  guardian_id: string;
   guardian_display_name: string | null;
   guardian_phone: string | null;
   student_id: string;
@@ -197,6 +197,28 @@ export interface GuardianLink {
   status: string;
   valid_from: string;
   valid_to: string | null;
+}
+
+export interface GuardianProfileStudent {
+  id: string;
+  display_name: string | null;
+  student_number: string;
+  grade_level_name: string | null;
+}
+
+export interface GuardianProfile {
+  id: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  profession: string | null;
+  workplace: string | null;
+  national_id: string | null;
+  address: string | null;
+  notes: string | null;
+  photo_file_id: string | null;
+  user_id: string | null;
+  students: GuardianProfileStudent[];
 }
 
 export interface StudentDetail {

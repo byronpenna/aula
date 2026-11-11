@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.deps import CurrentMembership
 from app.core.errors import ForbiddenError, NotFoundError, UnprocessableError
-from app.core.permissions import ENROLLMENT_MANAGE
+from app.core.permissions import ENROLLMENT_MANAGE, GUARDIAN_LINK_MANAGE
 from app.modules.academics import repository as academics_repo
 from app.modules.academics import service as academics_service
 from app.modules.academics.models import Course
@@ -336,6 +336,44 @@ def upload_student_photo(
     return file
 
 
+def upload_guardian_photo(
+    db: Session,
+    settings: Settings,
+    current: CurrentMembership,
+    guardian_id: uuid.UUID,
+    filename: str,
+    content_type: str,
+    content: bytes,
+) -> File:
+    """Gestión de tutores (Administración > Tutores): mismo patrón exacto que
+    `upload_student_photo`, con `GUARDIAN_LINK_MANAGE` en vez de
+    `ENROLLMENT_MANAGE`."""
+    if GUARDIAN_LINK_MANAGE not in current.permission_codes:
+        raise ForbiddenError("No puedes administrar la fotografía de este tutor.")
+    profile = identity_repo.get_guardian_profile(db, current.school_id, guardian_id)
+    if profile is None:
+        raise NotFoundError("El tutor indicado no existe en este colegio.")
+    if content_type not in STUDENT_PHOTO_CONTENT_TYPES:
+        raise UnprocessableError(
+            "La fotografía debe ser una imagen (PNG, JPEG o WEBP).",
+            details={"allowed": sorted(STUDENT_PHOTO_CONTENT_TYPES)},
+        )
+    file = _store(
+        db,
+        settings,
+        school_id=current.school_id,
+        owner_user_id=current.membership.user_id,
+        attached_to_type="guardian_profile",
+        attached_to_id=guardian_id,
+        filename=filename,
+        content_type=content_type,
+        content=content,
+    )
+    profile.photo_file_id = file.id
+    db.commit()
+    return file
+
+
 def get_download(
     db: Session,
     settings: Settings,
@@ -371,6 +409,10 @@ def get_download(
         # Solo administración/coordinación por ahora (ver `upload_student_photo`);
         # no se expone todavía al alumno ni a su tutor.
         if ENROLLMENT_MANAGE not in current.permission_codes:
+            raise ForbiddenError("No puedes ver esta fotografía.")
+    elif file.attached_to_type == "guardian_profile":
+        # Mismo alcance angosto que la foto de alumno (ver `upload_guardian_photo`).
+        if GUARDIAN_LINK_MANAGE not in current.permission_codes:
             raise ForbiddenError("No puedes ver esta fotografía.")
     elif file.attached_to_type == "course_post":
         # Cualquiera con acceso al curso ve la imagen de la publicación — es

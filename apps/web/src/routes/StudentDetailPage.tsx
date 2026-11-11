@@ -50,6 +50,7 @@ export function StudentDetailPage() {
     queryFn: async () => (await apiClient.get("/me/permissions")).data,
   });
   const canViewPhoto = permissions?.permissions.includes("enrollment:manage") ?? false;
+  const canManageGuardians = permissions?.permissions.includes("guardian_link:manage") ?? false;
 
   if (isLoading) return <LoadingState label="Cargando ficha del alumno…" />;
   if (error) return <ErrorState error={error} />;
@@ -115,7 +116,9 @@ export function StudentDetailPage() {
         )}
       </div>
 
-      {studentId && <StudentGuardiansSection studentId={studentId} />}
+      {studentId && (
+        <StudentGuardiansSection studentId={studentId} canManageGuardians={canManageGuardians} />
+      )}
       {studentId && <StudentPaymentSection studentId={studentId} />}
     </div>
   );
@@ -128,7 +131,13 @@ export function StudentDetailPage() {
 // el vínculo (agregar/quitar tutor) sigue viviendo en Administración > Alumnos
 // (StudentsAdminPage.tsx), que exige guardian_link:manage; aquí es solo para
 // poder contactarlo, de ahí el botón de WhatsApp en vez de un formulario.
-function StudentGuardiansSection({ studentId }: { studentId: string }) {
+function StudentGuardiansSection({
+  studentId,
+  canManageGuardians,
+}: {
+  studentId: string;
+  canManageGuardians: boolean;
+}) {
   const { data, isLoading, error } = useQuery<GuardianLink[]>({
     queryKey: ["students", studentId, "guardians"],
     queryFn: async () => (await apiClient.get(`/students/${studentId}/guardians`)).data,
@@ -153,7 +162,16 @@ function StudentGuardiansSection({ studentId }: { studentId: string }) {
           >
             <div className="min-w-0">
               <p className="text-sm font-medium text-brand-900">
-                {guardian.guardian_display_name ?? "Usuario eliminado"}
+                {canManageGuardians ? (
+                  <Link
+                    to={`/admin/guardians?selected=${guardian.guardian_id}`}
+                    className="focus-ring hover:underline"
+                  >
+                    {guardian.guardian_display_name ?? "Tutor eliminado"}
+                  </Link>
+                ) : (
+                  guardian.guardian_display_name ?? "Tutor eliminado"
+                )}
               </p>
               <p className="text-xs text-slate-500">
                 {guardian.relationship_label}

@@ -19,6 +19,7 @@ import { StudentDetailPage } from "./routes/StudentDetailPage";
 import { StudentSubmissionsPage } from "./routes/StudentSubmissionsPage";
 import { AcademicsAdminPage } from "./routes/AcademicsAdminPage";
 import { StudentsAdminPage } from "./routes/StudentsAdminPage";
+import { GuardiansAdminPage } from "./routes/GuardiansAdminPage";
 import { AdminLayout } from "./routes/AdminLayout";
 import { AdminDashboardPage } from "./routes/AdminDashboardPage";
 import { AdminUsersPage } from "./routes/AdminUsersPage";
@@ -74,6 +75,7 @@ function App() {
                 <Route path="/admin" element={<AdminDashboardPage />} />
                 <Route path="/admin/academics" element={<AcademicsAdminPage />} />
                 <Route path="/admin/students" element={<StudentsAdminPage />} />
+                <Route path="/admin/guardians" element={<GuardiansAdminPage />} />
                 <Route path="/admin/users" element={<AdminUsersPage />} />
                 <Route path="/admin/roles" element={<AdminRolesPage />} />
                 <Route path="/admin/billing" element={<BillingAdminPage />} />

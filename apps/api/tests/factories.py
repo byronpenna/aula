@@ -22,6 +22,7 @@ from app.modules.academics.models import (
     Subject,
 )
 from app.modules.identity.models import (
+    GuardianProfile,
     GuardianStudentLink,
     MembershipRole,
     Permission,
@@ -162,9 +163,21 @@ def assign_teacher(db: Session, *, school: School, course: Course, teacher_user:
 def link_guardian(
     db: Session, *, school: School, guardian_user: User, student_profile: StudentProfile, status: str = "active"
 ) -> GuardianStudentLink:
+    """`GuardianStudentLink` apunta a un `GuardianProfile` (ver models.py), no
+    directamente a un `User` — se crea uno aquí reutilizando los datos del
+    `User` dado, igual que hace el backfill de la migración `7c3f9a2e1b4d`."""
+    profile = GuardianProfile(
+        school_id=school.id,
+        user_id=guardian_user.id,
+        full_name=guardian_user.display_name,
+        email=guardian_user.email,
+        phone=guardian_user.phone,
+    )
+    db.add(profile)
+    db.flush()
     link = GuardianStudentLink(
         school_id=school.id,
-        guardian_user_id=guardian_user.id,
+        guardian_id=profile.id,
         student_id=student_profile.id,
         relationship_label="madre/padre",
         status=status,

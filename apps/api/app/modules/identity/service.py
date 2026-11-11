@@ -14,10 +14,12 @@ from app.core.deps import CurrentMembership
 from app.core.errors import ConflictError, NotFoundError, UnauthorizedError, UnprocessableError
 from app.core.permissions import ROLES_MANAGE, USERS_MANAGE
 from app.core.security import issue_local_token
+from app.modules.academics import repository as academics_repo
 from app.modules.identity import cognito_admin, mailer
 from app.modules.identity import repository as identity_repo
 from app.modules.identity.models import (
     AuditEvent,
+    GuardianProfile,
     GuardianStudentLink,
     LocalAuthCredential,
     MembershipRole,
@@ -28,6 +30,8 @@ from app.modules.identity.models import (
 )
 from app.modules.identity.schemas import (
     GuardianLinkCreate,
+    GuardianProfileCreate,
+    GuardianProfileUpdate,
     RolePermissionsUpdate,
     StudentProfileCreate,
     StudentProfileUpdate,
@@ -492,6 +496,165 @@ def update_student_profile(
     return profile
 
 
+def _require_unlinked_guardian_user(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    *,
+    exclude_profile_id: uuid.UUID | None,
+) -> None:
+    """Igual que `_require_unlinked_user` pero para `GuardianProfile`: debe tener
+    membresía en este colegio y no estar ya vinculado a OTRO perfil de tutor."""
+    if identity_repo.get_membership(db, current.school_id, user_id) is None:
+        raise NotFoundError("El usuario indicado no existe en este colegio.")
+    existing = identity_repo.get_guardian_profile_by_user(db, current.school_id, user_id)
+    if existing is not None and existing.id != exclude_profile_id:
+        raise ConflictError("Ese usuario ya tiene un perfil de tutor en este colegio.")
+
+
+def create_guardian_profile(
+    db: Session,
+    current: CurrentMembership,
+    payload: GuardianProfileCreate,
+    request_id: str | None,
+) -> dict:
+    """Alta de la ficha de contacto de un tutor (Administración > Tutores),
+    independiente de `create_user`: el modelo admite un `GuardianProfile` sin
+    cuenta de acceso (`user_id` nullable) porque la mayoría de tutores nunca
+    necesita iniciar sesión, solo que el colegio tenga sus datos de contacto."""
+    full_name = payload.full_name.strip()
+    if not full_name:
+        raise UnprocessableError("El nombre completo no puede estar vacío.")
+
+    if payload.user_id is not None:
+        _require_unlinked_guardian_user(db, current, payload.user_id, exclude_profile_id=None)
+
+    profile = GuardianProfile(
+        school_id=current.school_id,
+        full_name=full_name,
+        email=(payload.email or "").strip() or None,
+        phone=(payload.phone or "").strip() or None,
+        profession=(payload.profession or "").strip() or None,
+        workplace=(payload.workplace or "").strip() or None,
+        national_id=(payload.national_id or "").strip() or None,
+        address=(payload.address or "").strip() or None,
+        notes=(payload.notes or "").strip() or None,
+        user_id=payload.user_id,
+    )
+    db.add(profile)
+    db.flush()
+    record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="guardian_profile.create",
+        target_type="guardian_profile",
+        target_id=str(profile.id),
+        request_id=request_id,
+    )
+    db.commit()
+    db.refresh(profile)
+    return _build_guardian_profile_out(db, current, profile)
+
+
+def _require_guardian_profile(
+    db: Session, current: CurrentMembership, guardian_id: uuid.UUID
+) -> GuardianProfile:
+    profile = identity_repo.get_guardian_profile(db, current.school_id, guardian_id)
+    if profile is None:
+        raise NotFoundError("El tutor indicado no existe en este colegio.")
+    return profile
+
+
+def update_guardian_profile(
+    db: Session,
+    current: CurrentMembership,
+    guardian_id: uuid.UUID,
+    payload: GuardianProfileUpdate,
+    request_id: str | None,
+) -> dict:
+    profile = _require_guardian_profile(db, current, guardian_id)
+    data = payload.model_dump(exclude_unset=True)
+    if "full_name" in data:
+        cleaned = data["full_name"].strip()
+        if not cleaned:
+            raise UnprocessableError("El nombre completo no puede estar vacío.")
+        data["full_name"] = cleaned
+    if "user_id" in data and data["user_id"] is not None and data["user_id"] != profile.user_id:
+        _require_unlinked_guardian_user(db, current, data["user_id"], exclude_profile_id=profile.id)
+    for field, value in data.items():
+        setattr(profile, field, value)
+    record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="guardian_profile.update",
+        target_type="guardian_profile",
+        target_id=str(profile.id),
+        request_id=request_id,
+    )
+    db.commit()
+    db.refresh(profile)
+    return _build_guardian_profile_out(db, current, profile)
+
+
+def _build_guardian_profile_out(
+    db: Session, current: CurrentMembership, profile: GuardianProfile
+) -> dict:
+    """Arma el dict de salida de un tutor con sus alumnos activos embebidos,
+    cada uno con el grado actual (mejor esfuerzo, ver
+    academics_repo.get_grade_level_names_for_students) — mismo patrón
+    `_build_x_out` ya usado en learning/service.py para las publicaciones."""
+    links = identity_repo.list_active_links_for_guardian(db, current.school_id, profile.id)
+    student_ids = [link.student_id for link in links]
+    grade_names = academics_repo.get_grade_level_names_for_students(
+        db, current.school_id, student_ids
+    )
+    students = []
+    for link in links:
+        student = identity_repo.get_student_profile(db, link.student_id)
+        if student is None:
+            continue
+        student_user = db.get(User, student.user_id) if student.user_id else None
+        students.append(
+            {
+                "id": student.id,
+                "display_name": student_display_name(
+                    student, student_user.display_name if student_user else None
+                ),
+                "student_number": student.student_number,
+                "grade_level_name": grade_names.get(student.id),
+            }
+        )
+    return {
+        "id": profile.id,
+        "full_name": profile.full_name,
+        "email": profile.email,
+        "phone": profile.phone,
+        "profession": profile.profession,
+        "workplace": profile.workplace,
+        "national_id": profile.national_id,
+        "address": profile.address,
+        "notes": profile.notes,
+        "photo_file_id": profile.photo_file_id,
+        "user_id": profile.user_id,
+        "students": students,
+    }
+
+
+def list_guardian_profiles_with_students(db: Session, current: CurrentMembership) -> list[dict]:
+    """Para la pantalla de Tutores (agrupada por grado en el frontend)."""
+    profiles = identity_repo.list_guardian_profiles(db, current.school_id)
+    return [_build_guardian_profile_out(db, current, profile) for profile in profiles]
+
+
+def get_guardian_profile_detail(
+    db: Session, current: CurrentMembership, guardian_id: uuid.UUID
+) -> dict:
+    profile = _require_guardian_profile(db, current, guardian_id)
+    return _build_guardian_profile_out(db, current, profile)
+
+
 def list_guardian_links(
     db: Session, current: CurrentMembership, user_id: uuid.UUID, student_id: uuid.UUID
 ) -> list[tuple[GuardianStudentLink, str | None, str | None]]:
@@ -515,16 +678,16 @@ def create_guardian_link(
     request_id: str | None,
 ) -> GuardianStudentLink:
     _require_student_profile(db, current, student_id)
-    if identity_repo.get_membership(db, current.school_id, payload.guardian_user_id) is None:
+    if identity_repo.get_guardian_profile(db, current.school_id, payload.guardian_id) is None:
         raise NotFoundError("El tutor indicado no existe en este colegio.")
     if identity_repo.get_active_guardian_link_for_pair(
-        db, current.school_id, payload.guardian_user_id, student_id
+        db, current.school_id, payload.guardian_id, student_id
     ):
         raise ConflictError("Ese tutor ya está vinculado a este alumno.")
 
     link = GuardianStudentLink(
         school_id=current.school_id,
-        guardian_user_id=payload.guardian_user_id,
+        guardian_id=payload.guardian_id,
         student_id=student_id,
         relationship_label=payload.relationship_label,
         status="active",
@@ -586,7 +749,7 @@ def student_display_name(
 
 
 def list_linked_students(db: Session, guardian_user_id: uuid.UUID) -> list[dict]:
-    links = identity_repo.get_active_guardian_links(db, guardian_user_id)
+    links = identity_repo.get_active_guardian_links_for_user_any_school(db, guardian_user_id)
     results = []
     for link in links:
         profile = identity_repo.get_student_profile(db, link.student_id)

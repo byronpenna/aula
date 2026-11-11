@@ -30,6 +30,9 @@ from app.modules.identity.schemas import (
     AuditEventOut,
     GuardianLinkCreate,
     GuardianLinkOut,
+    GuardianProfileCreate,
+    GuardianProfileOut,
+    GuardianProfileUpdate,
     LinkedStudentOut,
     LocalLoginRequest,
     LocalLoginResponse,
@@ -207,7 +210,7 @@ def list_student_guardians(
     return [
         GuardianLinkOut(
             id=link.id,
-            guardian_user_id=link.guardian_user_id,
+            guardian_id=link.guardian_id,
             guardian_display_name=name,
             guardian_phone=phone,
             student_id=link.student_id,
@@ -231,11 +234,11 @@ def create_student_guardian(
     link = identity_service.create_guardian_link(
         db, current, student_id, payload, request.state.request_id
     )
-    guardian = identity_repo.get_user(db, link.guardian_user_id)
+    guardian = identity_repo.get_guardian_profile(db, current.school_id, link.guardian_id)
     return GuardianLinkOut(
         id=link.id,
-        guardian_user_id=link.guardian_user_id,
-        guardian_display_name=guardian.display_name if guardian else None,
+        guardian_id=link.guardian_id,
+        guardian_display_name=guardian.full_name if guardian else None,
         guardian_phone=guardian.phone if guardian else None,
         student_id=link.student_id,
         relationship_label=link.relationship_label,
@@ -256,11 +259,11 @@ def revoke_student_guardian(
     link = identity_service.revoke_guardian_link(
         db, current, student_id, link_id, request.state.request_id
     )
-    guardian = identity_repo.get_user(db, link.guardian_user_id)
+    guardian = identity_repo.get_guardian_profile(db, current.school_id, link.guardian_id)
     return GuardianLinkOut(
         id=link.id,
-        guardian_user_id=link.guardian_user_id,
-        guardian_display_name=guardian.display_name if guardian else None,
+        guardian_id=link.guardian_id,
+        guardian_display_name=guardian.full_name if guardian else None,
         guardian_phone=guardian.phone if guardian else None,
         student_id=link.student_id,
         relationship_label=link.relationship_label,
@@ -268,6 +271,52 @@ def revoke_student_guardian(
         valid_from=link.valid_from,
         valid_to=link.valid_to,
     )
+
+
+@router.get("/guardians", response_model=list[GuardianProfileOut])
+def list_guardians(
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(GUARDIAN_LINK_MANAGE)),
+) -> list[GuardianProfileOut]:
+    return [
+        GuardianProfileOut(**data)
+        for data in identity_service.list_guardian_profiles_with_students(db, current)
+    ]
+
+
+@router.post("/guardians", response_model=GuardianProfileOut)
+def create_guardian(
+    payload: GuardianProfileCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(GUARDIAN_LINK_MANAGE)),
+) -> GuardianProfileOut:
+    data = identity_service.create_guardian_profile(db, current, payload, request.state.request_id)
+    return GuardianProfileOut(**data)
+
+
+@router.get("/guardians/{guardian_id}", response_model=GuardianProfileOut)
+def get_guardian(
+    guardian_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(GUARDIAN_LINK_MANAGE)),
+) -> GuardianProfileOut:
+    data = identity_service.get_guardian_profile_detail(db, current, guardian_id)
+    return GuardianProfileOut(**data)
+
+
+@router.patch("/guardians/{guardian_id}", response_model=GuardianProfileOut)
+def update_guardian(
+    guardian_id: uuid.UUID,
+    payload: GuardianProfileUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current: CurrentMembership = Depends(require_permission(GUARDIAN_LINK_MANAGE)),
+) -> GuardianProfileOut:
+    data = identity_service.update_guardian_profile(
+        db, current, guardian_id, payload, request.state.request_id
+    )
+    return GuardianProfileOut(**data)
 
 
 @router.get("/teachers", response_model=list[UserOut])

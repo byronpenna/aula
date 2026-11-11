@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.modules.identity.models import (
     AuditEvent,
+    GuardianProfile,
     GuardianStudentLink,
     LocalAuthCredential,
     MembershipRole,
@@ -95,11 +96,45 @@ def get_role_by_code(db: Session, code: str) -> Role | None:
     return db.execute(stmt).scalar_one_or_none()
 
 
-def get_active_guardian_links(
-    db: Session, guardian_user_id: uuid.UUID
+def get_active_guardian_links_for_user(
+    db: Session, school_id: uuid.UUID, user_id: uuid.UUID
+) -> list[GuardianStudentLink]:
+    """Vínculos activos del tutor que inició sesión (`user_id` es su propio
+    `User.id`), ya acotados a este colegio — resuelve primero su
+    `GuardianProfile` en este colegio y desde ahí sus vínculos. Usado por los
+    chequeos de acceso en academics/service.py y books/service.py."""
+    stmt = (
+        select(GuardianStudentLink)
+        .join(GuardianProfile, GuardianProfile.id == GuardianStudentLink.guardian_id)
+        .where(
+            GuardianProfile.school_id == school_id,
+            GuardianProfile.user_id == user_id,
+            GuardianStudentLink.status == "active",
+        )
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def get_active_guardian_links_for_user_any_school(
+    db: Session, user_id: uuid.UUID
+) -> list[GuardianStudentLink]:
+    """Igual que `get_active_guardian_links_for_user` pero sin acotar a un
+    colegio — un tutor puede tener hijos en más de uno; usado solo por
+    `GET /me/students`, donde cada vínculo ya trae su propio `school_id`."""
+    stmt = (
+        select(GuardianStudentLink)
+        .join(GuardianProfile, GuardianProfile.id == GuardianStudentLink.guardian_id)
+        .where(GuardianProfile.user_id == user_id, GuardianStudentLink.status == "active")
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def list_active_links_for_guardian(
+    db: Session, school_id: uuid.UUID, guardian_id: uuid.UUID
 ) -> list[GuardianStudentLink]:
     stmt = select(GuardianStudentLink).where(
-        GuardianStudentLink.guardian_user_id == guardian_user_id,
+        GuardianStudentLink.school_id == school_id,
+        GuardianStudentLink.guardian_id == guardian_id,
         GuardianStudentLink.status == "active",
     )
     return list(db.execute(stmt).scalars().all())
@@ -109,8 +144,8 @@ def list_guardian_links_for_student(
     db: Session, school_id: uuid.UUID, student_id: uuid.UUID
 ) -> list[tuple[GuardianStudentLink, str | None, str | None]]:
     stmt = (
-        select(GuardianStudentLink, User.display_name, User.phone)
-        .outerjoin(User, User.id == GuardianStudentLink.guardian_user_id)
+        select(GuardianStudentLink, GuardianProfile.full_name, GuardianProfile.phone)
+        .outerjoin(GuardianProfile, GuardianProfile.id == GuardianStudentLink.guardian_id)
         .where(
             GuardianStudentLink.school_id == school_id,
             GuardianStudentLink.student_id == student_id,
@@ -121,11 +156,11 @@ def list_guardian_links_for_student(
 
 
 def get_active_guardian_link_for_pair(
-    db: Session, school_id: uuid.UUID, guardian_user_id: uuid.UUID, student_id: uuid.UUID
+    db: Session, school_id: uuid.UUID, guardian_id: uuid.UUID, student_id: uuid.UUID
 ) -> GuardianStudentLink | None:
     stmt = select(GuardianStudentLink).where(
         GuardianStudentLink.school_id == school_id,
-        GuardianStudentLink.guardian_user_id == guardian_user_id,
+        GuardianStudentLink.guardian_id == guardian_id,
         GuardianStudentLink.student_id == student_id,
         GuardianStudentLink.status == "active",
     )
@@ -137,6 +172,33 @@ def get_guardian_link(
 ) -> GuardianStudentLink | None:
     stmt = select(GuardianStudentLink).where(
         GuardianStudentLink.school_id == school_id, GuardianStudentLink.id == link_id
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def list_guardian_profiles(db: Session, school_id: uuid.UUID) -> list[GuardianProfile]:
+    stmt = (
+        select(GuardianProfile)
+        .where(GuardianProfile.school_id == school_id)
+        .order_by(GuardianProfile.full_name)
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def get_guardian_profile(
+    db: Session, school_id: uuid.UUID, guardian_id: uuid.UUID
+) -> GuardianProfile | None:
+    stmt = select(GuardianProfile).where(
+        GuardianProfile.id == guardian_id, GuardianProfile.school_id == school_id
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def get_guardian_profile_by_user(
+    db: Session, school_id: uuid.UUID, user_id: uuid.UUID
+) -> GuardianProfile | None:
+    stmt = select(GuardianProfile).where(
+        GuardianProfile.school_id == school_id, GuardianProfile.user_id == user_id
     )
     return db.execute(stmt).scalar_one_or_none()
 
