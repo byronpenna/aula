@@ -4,16 +4,12 @@ import { apiClient } from "../lib/apiClient";
 import type { Course } from "../lib/types";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
+import { formatDateOnly } from "../lib/dates";
 
 // starts_on/ends_on llegan como fechas ISO (YYYY-MM-DD); se muestran como rango
-// corto en español para que la tarjeta comunique vigencia sin abrir el detalle.
-const dateFormatter = new Intl.DateTimeFormat("es", { day: "numeric", month: "short" });
-const yearFormatter = new Intl.DateTimeFormat("es", { year: "numeric" });
-
+// corto en dd/mm/yyyy para que la tarjeta comunique vigencia sin abrir el detalle.
 function formatCourseTerm(startsOn: string, endsOn: string): string {
-  const start = new Date(startsOn);
-  const end = new Date(endsOn);
-  return `${dateFormatter.format(start)} – ${dateFormatter.format(end)} ${yearFormatter.format(end)}`;
+  return `${formatDateOnly(startsOn)} – ${formatDateOnly(endsOn)}`;
 }
 
 function formatTeacherCount(count: number): string {

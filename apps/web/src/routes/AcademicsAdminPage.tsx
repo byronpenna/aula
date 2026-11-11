@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { apiClient } from "../lib/apiClient";
+import { formatDateOnly } from "../lib/dates";
 import type {
   AcademicYear,
   Course,
@@ -20,6 +21,7 @@ import { ErrorState, ForbiddenState, LoadingState } from "../components/States";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { StatusBadge } from "../components/StatusBadge";
 import { PencilIcon } from "../components/icons";
+import { DatePicker } from "../components/DatePicker";
 
 // Panel de administración académica: pestañas horizontales dentro de un mismo
 // módulo (aula_virtual_linares_agente_v2/02-PANTALLAS-Y-FLUJOS.md §1: "la
@@ -173,6 +175,7 @@ function AcademicYearsSection() {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<YearForm>({ resolver: zodResolver(yearSchema) });
 
@@ -203,10 +206,22 @@ function AcademicYearsSection() {
           <input className={inputClass} {...register("label")} />
         </Field>
         <Field label="Inicio" error={errors.starts_on?.message}>
-          <input type="date" className={inputClass} {...register("starts_on")} />
+          <Controller
+            control={control}
+            name="starts_on"
+            render={({ field }) => (
+              <DatePicker value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} className={inputClass} />
+            )}
+          />
         </Field>
         <Field label="Fin" error={errors.ends_on?.message}>
-          <input type="date" className={inputClass} {...register("ends_on")} />
+          <Controller
+            control={control}
+            name="ends_on"
+            render={({ field }) => (
+              <DatePicker value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} className={inputClass} />
+            )}
+          />
         </Field>
         <div className="flex items-end">
           <button
@@ -250,8 +265,8 @@ function AcademicYearsSection() {
               ) : (
                 <tr key={year.id} className="border-b border-slate-100">
                   <td className={td}>{year.label}</td>
-                  <td className={td}>{year.starts_on}</td>
-                  <td className={td}>{year.ends_on}</td>
+                  <td className={td}>{formatDateOnly(year.starts_on)}</td>
+                  <td className={td}>{formatDateOnly(year.ends_on)}</td>
                   <td className={td}>
                     <StatusBadge status={year.status} />
                   </td>
@@ -296,6 +311,7 @@ function YearEditRow({
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<YearForm>({
     resolver: zodResolver(yearSchema),
@@ -319,10 +335,22 @@ function YearEditRow({
             <input className={inputClass} {...register("label")} />
           </Field>
           <Field label="Inicio" error={errors.starts_on?.message}>
-            <input type="date" className={inputClass} {...register("starts_on")} />
+            <Controller
+              control={control}
+              name="starts_on"
+              render={({ field }) => (
+                <DatePicker value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} className={inputClass} />
+              )}
+            />
           </Field>
           <Field label="Fin" error={errors.ends_on?.message}>
-            <input type="date" className={inputClass} {...register("ends_on")} />
+            <Controller
+              control={control}
+              name="ends_on"
+              render={({ field }) => (
+                <DatePicker value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} className={inputClass} />
+              )}
+            />
           </Field>
           <div className="flex items-end gap-2">
             <button
@@ -1070,6 +1098,7 @@ function CoursesSection() {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<CourseForm>({ resolver: zodResolver(courseSchema) });
 
@@ -1129,10 +1158,22 @@ function CoursesSection() {
           </select>
         </Field>
         <Field label="Fecha de inicio" error={errors.starts_on?.message}>
-          <input type="date" className={inputClass} {...register("starts_on")} />
+          <Controller
+            control={control}
+            name="starts_on"
+            render={({ field }) => (
+              <DatePicker value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} className={inputClass} />
+            )}
+          />
         </Field>
         <Field label="Fecha de fin" error={errors.ends_on?.message}>
-          <input type="date" className={inputClass} {...register("ends_on")} />
+          <Controller
+            control={control}
+            name="ends_on"
+            render={({ field }) => (
+              <DatePicker value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} className={inputClass} />
+            )}
+          />
         </Field>
         <div className="flex items-end">
           <button
@@ -1213,8 +1254,8 @@ function CourseRows({
   const [teacherToAssign, setTeacherToAssign] = useState("");
 
   const {
-    register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<CourseEditForm>({
     resolver: zodResolver(courseEditSchema),
@@ -1259,8 +1300,8 @@ function CourseRows({
             <span className="text-amber-700">Sin asignar</span>
           )}
         </td>
-        <td className={td}>{course.starts_on}</td>
-        <td className={td}>{course.ends_on}</td>
+        <td className={td}>{formatDateOnly(course.starts_on)}</td>
+        <td className={td}>{formatDateOnly(course.ends_on)}</td>
         <td className={td}>
           <StatusBadge status={course.status} />
         </td>
@@ -1285,10 +1326,22 @@ function CourseRows({
               noValidate
             >
               <Field label="Fecha de inicio" error={errors.starts_on?.message}>
-                <input type="date" className={inputClass} {...register("starts_on")} />
+                <Controller
+                  control={control}
+                  name="starts_on"
+                  render={({ field }) => (
+                    <DatePicker value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} className={inputClass} />
+                  )}
+                />
               </Field>
               <Field label="Fecha de fin" error={errors.ends_on?.message}>
-                <input type="date" className={inputClass} {...register("ends_on")} />
+                <Controller
+                  control={control}
+                  name="ends_on"
+                  render={({ field }) => (
+                    <DatePicker value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} className={inputClass} />
+                  )}
+                />
               </Field>
               <div className="flex items-end">
                 <button
@@ -1374,6 +1427,7 @@ function EnrollmentsSection() {
     handleSubmit,
     reset,
     watch,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<EnrollmentForm>({ resolver: zodResolver(enrollmentSchema) });
 
@@ -1469,7 +1523,13 @@ function EnrollmentsSection() {
           </select>
         </Field>
         <Field label="Fecha de inicio" error={errors.starts_on?.message}>
-          <input type="date" className={inputClass} {...register("starts_on")} />
+          <Controller
+            control={control}
+            name="starts_on"
+            render={({ field }) => (
+              <DatePicker value={field.value ?? ""} onChange={field.onChange} onBlur={field.onBlur} className={inputClass} />
+            )}
+          />
         </Field>
 
         {selectedSectionId && (
@@ -1549,7 +1609,7 @@ function EnrollmentsSection() {
                   <tr key={enrollment.id} className="border-b border-slate-100">
                     <td className={td}>{sectionLabel(enrollment.section_id)}</td>
                     <td className={td}>{yearLabel(enrollment.academic_year_id)}</td>
-                    <td className={td}>{enrollment.starts_on}</td>
+                    <td className={td}>{formatDateOnly(enrollment.starts_on)}</td>
                     <td className={td}>
                       <StatusBadge status={enrollment.status} />
                     </td>

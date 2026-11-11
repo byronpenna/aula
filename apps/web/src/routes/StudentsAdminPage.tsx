@@ -1,9 +1,10 @@
 import { useRef, useState, type ChangeEvent, type ReactNode } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../lib/apiClient";
+import { formatDateOnly } from "../lib/dates";
 import type {
   AcademicYear,
   EnrollmentRecord,
@@ -18,6 +19,7 @@ import { EmptyState, ErrorState, ForbiddenState, LoadingState } from "../compone
 import { StatusBadge } from "../components/StatusBadge";
 import { CloseIcon } from "../components/icons";
 import { StudentAvatar } from "../components/StudentAvatar";
+import { DatePicker } from "../components/DatePicker";
 
 const inputClass = "focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm";
 const th = "px-2 py-1.5 text-left text-xs font-medium text-brand-700";
@@ -84,6 +86,7 @@ function StudentsAdminContent({ canManageUsers }: { canManageUsers: boolean }) {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<CreateStudentForm>({ resolver: zodResolver(createStudentSchema) });
 
@@ -144,7 +147,18 @@ function StudentsAdminContent({ canManageUsers }: { canManageUsers: boolean }) {
               <input className={inputClass} {...register("last_name")} />
             </Field>
             <Field label="Fecha de nacimiento">
-              <input type="date" className={inputClass} {...register("birth_date")} />
+              <Controller
+                control={control}
+                name="birth_date"
+                render={({ field }) => (
+                  <DatePicker
+                    value={field.value ?? ""}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    className={inputClass}
+                  />
+                )}
+              />
             </Field>
             <div className="flex items-end">
               <button
@@ -231,6 +245,7 @@ function StudentDetailPanel({
   const {
     register,
     handleSubmit,
+    control,
     formState: { isSubmitting },
   } = useForm<PersonalDataForm>({
     resolver: zodResolver(personalDataSchema),
@@ -268,7 +283,18 @@ function StudentDetailPanel({
             <input className={inputClass} {...register("last_name")} />
           </Field>
           <Field label="Fecha de nacimiento">
-            <input type="date" className={inputClass} {...register("birth_date")} />
+            <Controller
+              control={control}
+              name="birth_date"
+              render={({ field }) => (
+                <DatePicker
+                  value={field.value ?? ""}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  className={inputClass}
+                />
+              )}
+            />
           </Field>
           <div className="flex items-end">
             <button
@@ -469,6 +495,7 @@ function StudentGuardiansCard({ student }: { student: StudentProfile }) {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<GuardianLinkForm>({
     resolver: zodResolver(guardianLinkSchema),
@@ -544,7 +571,18 @@ function StudentGuardiansCard({ student }: { student: StudentProfile }) {
           <input className={inputClass} {...register("relationship_label")} />
         </Field>
         <Field label="Desde" error={errors.valid_from?.message}>
-          <input type="date" className={inputClass} {...register("valid_from")} />
+          <Controller
+            control={control}
+            name="valid_from"
+            render={({ field }) => (
+              <DatePicker
+                value={field.value ?? ""}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                className={inputClass}
+              />
+            )}
+          />
         </Field>
         <div className="flex items-end">
           <button
@@ -601,7 +639,7 @@ function StudentHistoryCard({ student }: { student: StudentProfile }) {
                 <tr key={enrollment.id} className="border-b border-slate-100">
                   <td className={td}>{yearLabel(enrollment.academic_year_id)}</td>
                   <td className={td}>{sectionLabel(enrollment.section_id)}</td>
-                  <td className={td}>{enrollment.starts_on}</td>
+                  <td className={td}>{formatDateOnly(enrollment.starts_on)}</td>
                   <td className={td}>
                     <StatusBadge status={enrollment.status} />
                   </td>

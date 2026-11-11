@@ -1,42 +1,59 @@
-// Formato de fecha+hora consistente en español para toda la plataforma (ver
-// lib/money.ts::formatMoney para el mismo patrón aplicado a montos). Antes de
-// esto, varias pantallas usaban `Date.toLocaleString()` crudo, que depende del
-// idioma configurado en el sistema operativo del usuario y puede salir en inglés
-// o con un formato distinto en cada pantalla.
-const formatter = new Intl.DateTimeFormat("es", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
+// Formato de fecha consistente en toda la plataforma: dd/mm/yyyy siempre,
+// construido a mano (nunca con las opciones de Intl.DateTimeFormat) porque el
+// orden día/mes/año y el separador de Intl varían según la variante exacta
+// del locale ("es-ES" no formatea igual que "es-419") y no hay forma de
+// pedirle a Intl "dd/mm/yyyy" literal — esto sí lo garantiza siempre. Antes de
+// esto, varias pantallas usaban `Date.toLocaleString()` crudo (dependiente del
+// idioma del sistema operativo) o `Intl.DateTimeFormat` con `dateStyle` (que
+// escribe el mes en palabras, no en número).
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function formatDdMmYyyy(d: Date): string {
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
 
 export function formatDateTime(iso: string): string {
-  return formatter.format(new Date(iso));
+  const d = new Date(iso);
+  return `${formatDdMmYyyy(d)}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
 // `new Date("2026-03-15")` se interpreta como medianoche UTC (ISO 8601 fecha
 // sola), así que en un colegio con huso horario negativo (America/El_Salvador,
 // UTC-6) los getters locales (getDate/getMonth) devuelven el día anterior —
-// por eso una fecha "sin hora" (event_date de CourseCalendarEvent, o cualquier
-// "YYYY-MM-DD" del backend) siempre se parsea a mano aquí, nunca con
-// `new Date(str)` directo.
+// por eso una fecha "sin hora" (event_date de CourseCalendarEvent, starts_on/
+// ends_on, o cualquier "YYYY-MM-DD" del backend) siempre se parsea a mano
+// aquí, nunca con `new Date(str)` directo.
 export function parseDateOnly(value: string): Date {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day);
 }
 
-const dateOnlyFormatter = new Intl.DateTimeFormat("es", { day: "numeric", month: "short" });
-const monthAbbrevFormatter = new Intl.DateTimeFormat("es", { month: "short" });
-
 export function formatDateOnly(value: string): string {
-  return dateOnlyFormatter.format(parseDateOnly(value));
+  return formatDdMmYyyy(parseDateOnly(value));
 }
 
-// Día y mes abreviado por separado (p. ej. para una tarjeta con el número de
-// día grande y el mes debajo) — nunca se parte el string ya formateado, el
-// orden día/mes de Intl no está garantizado igual en todos los locales.
+const MONTH_ABBREV = [
+  "ene",
+  "feb",
+  "mar",
+  "abr",
+  "may",
+  "jun",
+  "jul",
+  "ago",
+  "sep",
+  "oct",
+  "nov",
+  "dic",
+];
+
+// Día y mes abreviado por separado, solo para la insignia visual de dos
+// líneas del calendario del curso (número de día grande y mes debajo) — ese
+// widget no es "texto con formato de fecha", es un elemento de diseño; nunca
+// se usa para mostrar una fecha como texto corrido (para eso, formatDateOnly).
 export function formatDateParts(value: string): { day: string; month: string } {
   const parsed = parseDateOnly(value);
-  return {
-    day: String(parsed.getDate()),
-    month: monthAbbrevFormatter.format(parsed).replace(".", ""),
-  };
+  return { day: String(parsed.getDate()), month: MONTH_ABBREV[parsed.getMonth()] };
 }

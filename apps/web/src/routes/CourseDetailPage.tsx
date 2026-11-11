@@ -19,7 +19,7 @@ import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { downloadFile } from "../lib/download";
-import { formatDateParts, formatDateTime } from "../lib/dates";
+import { formatDateOnly, formatDateParts, formatDateTime } from "../lib/dates";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -42,6 +42,7 @@ import {
   isAbsoluteHttpUrl,
 } from "../lib/linkPreview";
 import { StudentAvatar } from "../components/StudentAvatar";
+import { DatePicker } from "../components/DatePicker";
 import { LinkPreviewModal } from "../components/LinkPreviewModal";
 import { useAuth } from "../context/AuthContext";
 
@@ -1202,19 +1203,13 @@ function NewCalendarEventModal({
             <label className="mb-1 block text-xs font-medium text-slate-600" htmlFor="cal-date">
               Fecha
             </label>
-            <input
-              id="cal-date"
-              type="date"
-              value={eventDate}
-              onChange={(e) => setEventDate(e.target.value)}
-              className="focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
-            />
+            <DatePicker id="cal-date" value={eventDate} onChange={setEventDate} />
           </div>
 
           {eventDate && (
             <div>
               <p className="mb-1 text-xs font-medium text-slate-600">
-                Vista del día — {formatDateParts(eventDate).day} de {formatDateParts(eventDate).month}
+                Vista del día — {formatDateOnly(eventDate)}
               </p>
               {dayItems.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-brand-200 bg-brand-50/60 p-3 text-xs text-brand-700">
