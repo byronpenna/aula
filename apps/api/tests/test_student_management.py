@@ -109,6 +109,14 @@ def test_admin_sets_handle_of_another_user(db_session, client, unique_suffix):
     )
     assert invalid.status_code == 422
 
+    phone_resp = client.patch(
+        f"/api/v1/users/{student_user.id}",
+        headers=headers,
+        json={"phone": "+50370000000"},
+    )
+    assert phone_resp.status_code == 200, phone_resp.text
+    assert phone_resp.json()["phone"] == "+50370000000"
+
 
 def test_guardian_link_create_list_and_revoke(db_session, client, unique_suffix):
     f.ensure_role_catalog(db_session)
@@ -191,6 +199,71 @@ def test_guardian_link_requires_permission_and_valid_guardian(db_session, client
         json={"guardian_user_id": str(uuid.uuid4()), "valid_from": "2026-01-01"},
     )
     assert not_found.status_code == 404
+
+
+def test_teacher_sharing_course_can_view_guardians_readonly(db_session, client, unique_suffix):
+    f.ensure_role_catalog(db_session)
+    school = f.create_school(db_session, f"Escuela {unique_suffix}")
+    admin = _admin(db_session, school, unique_suffix)
+    admin_headers = f.auth_headers(admin, school_id=school.id)
+    structure = f.create_academic_structure(db_session, school)
+
+    teacher = f.create_user(db_session, display_name="Docente", cognito_sub=f"t-{unique_suffix}")
+    f.add_membership(db_session, school=school, user=teacher, role_codes=["teacher"])
+    f.assign_teacher(db_session, school=school, course=structure["course"], teacher_user=teacher)
+
+    other_teacher = f.create_user(
+        db_session, display_name="Otro Docente", cognito_sub=f"t2-{unique_suffix}"
+    )
+    f.add_membership(db_session, school=school, user=other_teacher, role_codes=["teacher"])
+
+    student_user = f.create_user(
+        db_session, display_name="Alumno Demo", cognito_sub=f"s-{unique_suffix}"
+    )
+    f.add_membership(db_session, school=school, user=student_user, role_codes=["student"])
+    enrollment = f.enroll_student(
+        db_session,
+        school=school,
+        structure=structure,
+        student_user=student_user,
+        student_number=f"N-{unique_suffix}",
+    )
+
+    guardian = f.create_user(db_session, display_name="Tutor", cognito_sub=f"g-{unique_suffix}")
+    guardian.phone = "+50370000000"
+    f.add_membership(db_session, school=school, user=guardian, role_codes=["guardian"])
+    f.link_guardian(db_session, school=school, guardian_user=guardian, student_profile=enrollment["profile"])
+    db_session.commit()
+
+    student_id = enrollment["profile"].id
+
+    teacher_resp = client.get(
+        f"/api/v1/students/{student_id}/guardians",
+        headers=f.auth_headers(teacher, school_id=school.id),
+    )
+    assert teacher_resp.status_code == 200, teacher_resp.text
+    assert len(teacher_resp.json()) == 1
+    assert teacher_resp.json()[0]["guardian_display_name"] == "Tutor"
+    assert teacher_resp.json()[0]["guardian_phone"] == "+50370000000"
+
+    # El docente puede VER, pero no crear/revocar vínculos (eso sigue exigiendo
+    # GUARDIAN_LINK_MANAGE, que un docente no tiene).
+    teacher_create = client.post(
+        f"/api/v1/students/{student_id}/guardians",
+        headers=f.auth_headers(teacher, school_id=school.id),
+        json={"guardian_user_id": str(guardian.id), "valid_from": "2026-01-01"},
+    )
+    assert teacher_create.status_code == 403
+
+    other_resp = client.get(
+        f"/api/v1/students/{student_id}/guardians",
+        headers=f.auth_headers(other_teacher, school_id=school.id),
+    )
+    assert other_resp.status_code == 404
+
+    admin_resp = client.get(f"/api/v1/students/{student_id}/guardians", headers=admin_headers)
+    assert admin_resp.status_code == 200
+    assert admin_resp.json()[0]["guardian_phone"] == "+50370000000"
 
 
 def test_student_photo_upload_and_download(db_session, client, unique_suffix):

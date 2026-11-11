@@ -32,6 +32,11 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     # igual que el resto de `User`): lo elige voluntariamente desde su perfil, nunca
     # se asigna automáticamente. Se guarda sin el "@" (se antepone solo al mostrarlo).
     handle: Mapped[str | None] = mapped_column(unique=True, nullable=True)
+    # Número de contacto (con código de país, p. ej. "+50370000000") para poder
+    # escribirle por WhatsApp desde la ficha de un alumno vinculado — se guarda
+    # tal cual lo ingresa quien lo edita, sin formatear; wa.me solo necesita los
+    # dígitos (ver StudentDetailPage.tsx, que limpia el resto al armar el enlace).
+    phone: Mapped[str | None] = mapped_column(nullable=True)
 
 
 class LocalAuthCredential(UUIDPKMixin, TimestampMixin, Base):

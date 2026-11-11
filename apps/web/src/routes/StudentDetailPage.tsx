@@ -1,13 +1,22 @@
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient, ApiError } from "../lib/apiClient";
-import type { Course, Permissions, StudentDetail, StudentPaymentPlan } from "../lib/types";
+import type { Course, GuardianLink, Permissions, StudentDetail, StudentPaymentPlan } from "../lib/types";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { StudentAvatar } from "../components/StudentAvatar";
+import { WhatsAppIcon } from "../components/icons";
 import { formatMoney, formatMonth } from "../lib/money";
 import { EFFECTIVE_STATUS_CLASS, EFFECTIVE_STATUS_LABEL, PAYMENT_METHOD_LABEL } from "../lib/billing";
+
+// wa.me solo acepta dígitos (con código de país, sin "+" ni espacios/guiones);
+// el teléfono se guarda tal cual lo ingresó quien lo editó (ver
+// identity/models.py::User.phone), así que se limpia recién aquí al armar el
+// enlace, nunca al guardarlo.
+function toWhatsAppLink(phone: string): string {
+  return `https://wa.me/${phone.replace(/\D/g, "")}`;
+}
 
 // Ficha de alumno: mismo guard que sus matrículas/entregas (sección 6, ver
 // academics/service.py::require_student_access) — admin/coordinación, el docente
@@ -106,7 +115,67 @@ export function StudentDetailPage() {
         )}
       </div>
 
+      {studentId && <StudentGuardiansSection studentId={studentId} />}
       {studentId && <StudentPaymentSection studentId={studentId} />}
+    </div>
+  );
+}
+
+// Tutores del alumno (sección nueva, SOLO LECTURA): mismo guard amplio que el
+// resto de la ficha —require_student_access, ver
+// identity/service.py::list_guardian_links— así que cualquiera que ya puede
+// ver esta página también puede ver aquí quiénes son sus tutores. Administrar
+// el vínculo (agregar/quitar tutor) sigue viviendo en Administración > Alumnos
+// (StudentsAdminPage.tsx), que exige guardian_link:manage; aquí es solo para
+// poder contactarlo, de ahí el botón de WhatsApp en vez de un formulario.
+function StudentGuardiansSection({ studentId }: { studentId: string }) {
+  const { data, isLoading, error } = useQuery<GuardianLink[]>({
+    queryKey: ["students", studentId, "guardians"],
+    queryFn: async () => (await apiClient.get(`/students/${studentId}/guardians`)).data,
+  });
+
+  if (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.status === 403)) return null;
+    return <ErrorState error={error} />;
+  }
+  if (isLoading) return <LoadingState label="Cargando tutores…" />;
+  const guardians = (data ?? []).filter((g) => g.status === "active");
+  if (guardians.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-brand-100 bg-white p-4">
+      <h2 className="mb-3 text-base font-semibold text-brand-900">Tutores</h2>
+      <ul className="space-y-2">
+        {guardians.map((guardian) => (
+          <li
+            key={guardian.id}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand-50 p-2.5"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-brand-900">
+                {guardian.guardian_display_name ?? "Usuario eliminado"}
+              </p>
+              <p className="text-xs text-slate-500">
+                {guardian.relationship_label}
+                {guardian.guardian_phone && ` · ${guardian.guardian_phone}`}
+              </p>
+            </div>
+            {guardian.guardian_phone ? (
+              <a
+                href={toWhatsAppLink(guardian.guardian_phone)}
+                target="_blank"
+                rel="noreferrer"
+                className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-100"
+              >
+                <WhatsAppIcon className="h-4 w-4" />
+                Enviar WhatsApp
+              </a>
+            ) : (
+              <span className="text-xs text-slate-400">Sin número registrado</span>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

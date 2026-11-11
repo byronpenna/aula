@@ -16,6 +16,7 @@ from app.core.errors import NotFoundError
 from app.core.permissions import (
     ACADEMICS_MANAGE,
     AUDIT_READ,
+    COURSE_READ,
     ENROLLMENT_MANAGE,
     GUARDIAN_LINK_MANAGE,
     ROLES_MANAGE,
@@ -199,21 +200,23 @@ def update_student(
 def list_student_guardians(
     student_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current: CurrentMembership = Depends(require_permission(GUARDIAN_LINK_MANAGE)),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
 ) -> list[GuardianLinkOut]:
-    rows = identity_service.list_guardian_links(db, current, student_id)
+    rows = identity_service.list_guardian_links(db, current, user.id, student_id)
     return [
         GuardianLinkOut(
             id=link.id,
             guardian_user_id=link.guardian_user_id,
             guardian_display_name=name,
+            guardian_phone=phone,
             student_id=link.student_id,
             relationship_label=link.relationship_label,
             status=link.status,
             valid_from=link.valid_from,
             valid_to=link.valid_to,
         )
-        for link, name in rows
+        for link, name, phone in rows
     ]
 
 
@@ -233,6 +236,7 @@ def create_student_guardian(
         id=link.id,
         guardian_user_id=link.guardian_user_id,
         guardian_display_name=guardian.display_name if guardian else None,
+        guardian_phone=guardian.phone if guardian else None,
         student_id=link.student_id,
         relationship_label=link.relationship_label,
         status=link.status,
@@ -257,6 +261,7 @@ def revoke_student_guardian(
         id=link.id,
         guardian_user_id=link.guardian_user_id,
         guardian_display_name=guardian.display_name if guardian else None,
+        guardian_phone=guardian.phone if guardian else None,
         student_id=link.student_id,
         relationship_label=link.relationship_label,
         status=link.status,

@@ -137,6 +137,19 @@ export function ChatIcon(props: IconProps) {
   );
 }
 
+// Burbuja de chat con un teléfono adentro — no es el logo de WhatsApp (se
+// mantiene el mismo trazo monocromático del resto del set, nunca un ícono de
+// marca a color); el botón que lo usa siempre lleva "WhatsApp" en el texto,
+// el ícono nunca es la única pista.
+export function WhatsAppIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M3.5 5.5h13v8h-6.5L6.5 16v-2.5h-3Z" />
+      <path d="M8.3 8.3c.3-.5 1-.5 1.2 0l.3.6c.1.3 0 .6-.2.8l-.3.3c.3.7.9 1.3 1.6 1.6l.3-.3c.2-.2.5-.3.8-.2l.6.3c.5.2.5.9 0 1.2-.8.5-1.8.4-2.6-.1-.9-.6-1.6-1.3-2.2-2.2-.5-.8-.6-1.8-.1-2.6Z" />
+    </svg>
+  );
+}
+
 export function PollIcon(props: IconProps) {
   return (
     <svg {...iconProps(props)}>

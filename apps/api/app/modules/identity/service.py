@@ -493,9 +493,17 @@ def update_student_profile(
 
 
 def list_guardian_links(
-    db: Session, current: CurrentMembership, student_id: uuid.UUID
-) -> list[tuple[GuardianStudentLink, str | None]]:
-    _require_student_profile(db, current, student_id)
+    db: Session, current: CurrentMembership, user_id: uuid.UUID, student_id: uuid.UUID
+) -> list[tuple[GuardianStudentLink, str | None, str | None]]:
+    """Ver los tutores de un alumno es de solo lectura y usa el mismo guard
+    amplio que el resto de su ficha —`require_student_access`: admin/
+    coordinación, el docente que comparte un curso con él, su tutor vinculado,
+    o el propio alumno— no el permiso angosto GUARDIAN_LINK_MANAGE (ese sigue
+    protegiendo crear/revocar vínculos, más abajo). Import diferido para
+    evitar el ciclo academics.service -> identity.service."""
+    from app.modules.academics import service as academics_service
+
+    academics_service.require_student_access(db, current, user_id, student_id)
     return identity_repo.list_guardian_links_for_student(db, current.school_id, student_id)
 
 

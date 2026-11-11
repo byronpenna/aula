@@ -191,6 +191,7 @@ export interface GuardianLink {
   id: string;
   guardian_user_id: string;
   guardian_display_name: string | null;
+  guardian_phone: string | null;
   student_id: string;
   relationship_label: string;
   status: string;

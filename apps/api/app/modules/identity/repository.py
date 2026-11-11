@@ -107,9 +107,9 @@ def get_active_guardian_links(
 
 def list_guardian_links_for_student(
     db: Session, school_id: uuid.UUID, student_id: uuid.UUID
-) -> list[tuple[GuardianStudentLink, str | None]]:
+) -> list[tuple[GuardianStudentLink, str | None, str | None]]:
     stmt = (
-        select(GuardianStudentLink, User.display_name)
+        select(GuardianStudentLink, User.display_name, User.phone)
         .outerjoin(User, User.id == GuardianStudentLink.guardian_user_id)
         .where(
             GuardianStudentLink.school_id == school_id,
@@ -117,7 +117,7 @@ def list_guardian_links_for_student(
         )
         .order_by(GuardianStudentLink.created_at)
     )
-    return [(row[0], row[1]) for row in db.execute(stmt).all()]
+    return [(row[0], row[1], row[2]) for row in db.execute(stmt).all()]
 
 
 def get_active_guardian_link_for_pair(

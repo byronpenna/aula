@@ -111,6 +111,7 @@ class UserOut(BaseModel):
     display_name: str
     email: str | None
     handle: str | None
+    phone: str | None
     status: str
 
 
@@ -129,6 +130,7 @@ class UserUpdate(BaseModel):
     # desde la ficha de un alumno) — normalización/unicidad se validan en
     # `service.py::_resolve_handle`, mismo helper que usa el autoservicio `PATCH /me`.
     handle: str | None = None
+    phone: str | None = None
 
 
 class UserListItemOut(BaseModel):
@@ -206,6 +208,7 @@ class GuardianLinkOut(BaseModel):
     id: uuid.UUID
     guardian_user_id: uuid.UUID
     guardian_display_name: str | None
+    guardian_phone: str | None
     student_id: uuid.UUID
     relationship_label: str
     status: str

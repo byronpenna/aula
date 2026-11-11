@@ -529,20 +529,27 @@ function StudentGuardiansCard({ student }: { student: StudentProfile }) {
         <p className="mb-3 text-sm text-slate-500">Sin tutores asignados todavía.</p>
       )}
       {active.length > 0 && (
-        <ul className="mb-3 space-y-1.5">
+        <ul className="mb-3 space-y-2">
           {active.map((link) => (
-            <li key={link.id} className="flex items-center justify-between gap-2 text-sm">
-              <span>
-                {link.guardian_display_name ?? "Usuario eliminado"}
-                <span className="ml-1 text-xs text-slate-500">({link.relationship_label})</span>
-              </span>
+            <li key={link.id} className="flex items-start justify-between gap-2 text-sm">
+              <div className="min-w-0">
+                <span>
+                  {link.guardian_display_name ?? "Usuario eliminado"}
+                  <span className="ml-1 text-xs text-slate-500">({link.relationship_label})</span>
+                </span>
+                <GuardianPhoneEditor
+                  guardianUserId={link.guardian_user_id}
+                  currentPhone={link.guardian_phone}
+                  onSaved={invalidate}
+                />
+              </div>
               <button
                 type="button"
                 disabled={revokeMutation.isPending}
                 onClick={() => revokeMutation.mutate(link.id)}
                 title="Quitar tutor"
                 aria-label={`Quitar a ${link.guardian_display_name ?? "este tutor"}`}
-                className="focus-ring rounded-md border border-slate-300 p-1 hover:bg-slate-100 disabled:opacity-60"
+                className="focus-ring shrink-0 rounded-md border border-slate-300 p-1 hover:bg-slate-100 disabled:opacity-60"
               >
                 <CloseIcon className="h-3.5 w-3.5" />
               </button>
@@ -596,6 +603,50 @@ function StudentGuardiansCard({ student }: { student: StudentProfile }) {
       </form>
       {createMutation.isError && <ErrorState error={createMutation.error} />}
     </Card>
+  );
+}
+
+// Teléfono del tutor (para el botón de WhatsApp en la ficha del alumno, ver
+// StudentDetailPage.tsx): se edita aquí porque vive en `User.phone` —del
+// tutor, no del vínculo— así que cambiarlo aplica a todos los alumnos que
+// tenga asignados, no solo a este. `PATCH /users/{id}` exige USERS_MANAGE,
+// más angosto que GUARDIAN_LINK_MANAGE; un coordinador sin ese permiso verá
+// el campo pero el guardado le devolverá 403, igual que ya ocurre con el
+// @handle en StudentAccountCard.
+function GuardianPhoneEditor({
+  guardianUserId,
+  currentPhone,
+  onSaved,
+}: {
+  guardianUserId: string;
+  currentPhone: string | null;
+  onSaved: () => void;
+}) {
+  const [value, setValue] = useState(currentPhone ?? "");
+  const mutation = useMutation({
+    mutationFn: async () =>
+      (await apiClient.patch(`/users/${guardianUserId}`, { phone: value.trim() || null })).data,
+    onSuccess: onSaved,
+  });
+
+  return (
+    <div className="mt-1 flex items-center gap-1.5">
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Teléfono (WhatsApp), p. ej. +50370000000"
+        className="w-56 rounded-md border border-slate-300 px-2 py-1 text-xs"
+      />
+      <button
+        type="button"
+        onClick={() => mutation.mutate()}
+        disabled={mutation.isPending || value.trim() === (currentPhone ?? "")}
+        className="focus-ring rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 disabled:opacity-50"
+      >
+        Guardar
+      </button>
+      {mutation.isError && <span className="text-xs text-red-600">No se pudo guardar.</span>}
+    </div>
   );
 }
 
