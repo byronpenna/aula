@@ -5,7 +5,14 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.modules.learning.models import Assignment, ResourceSection, Submission, SubmissionRevision
+from app.modules.learning.models import (
+    Assignment,
+    ResourceLink,
+    ResourceLinkComment,
+    ResourceSection,
+    Submission,
+    SubmissionRevision,
+)
 
 
 def get_assignment(
@@ -82,6 +89,43 @@ def get_resource_section(
         ResourceSection.id == section_id, ResourceSection.school_id == school_id
     )
     return db.execute(stmt).scalar_one_or_none()
+
+
+def list_resource_links(
+    db: Session, school_id: uuid.UUID, resource_section_id: uuid.UUID
+) -> list[ResourceLink]:
+    stmt = select(ResourceLink).where(
+        ResourceLink.school_id == school_id,
+        ResourceLink.resource_section_id == resource_section_id,
+    ).order_by(ResourceLink.created_at)
+    return list(db.execute(stmt).scalars().all())
+
+
+def get_resource_link(
+    db: Session, school_id: uuid.UUID, link_id: uuid.UUID
+) -> ResourceLink | None:
+    stmt = select(ResourceLink).where(
+        ResourceLink.id == link_id, ResourceLink.school_id == school_id
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
+def list_link_comments(
+    db: Session, school_id: uuid.UUID, resource_link_id: uuid.UUID
+) -> list[ResourceLinkComment]:
+    stmt = select(ResourceLinkComment).where(
+        ResourceLinkComment.school_id == school_id,
+        ResourceLinkComment.resource_link_id == resource_link_id,
+    ).order_by(ResourceLinkComment.created_at)
+    return list(db.execute(stmt).scalars().all())
+
+
+def delete_link_comments(db: Session, resource_link_id: uuid.UUID) -> None:
+    stmt = select(ResourceLinkComment).where(
+        ResourceLinkComment.resource_link_id == resource_link_id
+    )
+    for comment in db.execute(stmt).scalars().all():
+        db.delete(comment)
 
 
 def next_revision_number(db: Session, submission_id: uuid.UUID) -> int:

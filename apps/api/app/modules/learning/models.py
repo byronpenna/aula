@@ -74,6 +74,47 @@ class ResourceSection(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
     status: Mapped[str] = mapped_column(nullable=False, default="active")
 
 
+class ResourceLink(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
+    """Enlace externo agregado como recurso de una sección, al lado de los
+    archivos (sección nueva): cualquier URL (video de YouTube/Facebook/TikTok,
+    o una página web cualquiera) — no hay almacenamiento propio, solo se guarda
+    la URL ya validada como absoluta (ver learning/service.py::_validate_url).
+    Reconocer de qué proveedor es y si se puede incrustar una vista previa es
+    puramente de presentación (ver apps/web/src/lib/linkPreview.ts): el backend
+    nunca necesita saberlo. Mismo criterio de acceso que un archivo de la
+    sección: cualquiera con acceso al curso puede verlo, solo quien administra
+    el curso puede agregarlo o quitarlo."""
+
+    __tablename__ = "resource_links"
+
+    resource_section_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("resource_sections.id"), nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(nullable=False)
+    url: Mapped[str] = mapped_column(nullable=False)
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+
+
+class ResourceLinkComment(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
+    """Comentario interno sobre un video de recursos: a diferencia de FileNote
+    (aclaración exclusiva de quien administra el curso sobre un PDF), este es un
+    hilo de conversación abierto a cualquiera con acceso al curso —
+    require_course_access tanto para leer como para comentar (ver
+    learning/service.py::create_link_comment)."""
+
+    __tablename__ = "resource_link_comments"
+
+    resource_link_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("resource_links.id"), nullable=False, index=True
+    )
+    author_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    body: Mapped[str] = mapped_column(nullable=False)
+
+
 class SubmissionRevision(UUIDPKMixin, Base):
     """Inmutable: nunca se hace UPDATE de una revisión existente, solo INSERT de la
     siguiente (sección 7 y 9)."""

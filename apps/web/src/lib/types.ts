@@ -138,16 +138,35 @@ export interface CourseStudent {
   photo_file_id: string | null;
 }
 
+export interface ResourceLink {
+  id: string;
+  resource_section_id: string;
+  title: string;
+  url: string;
+  created_at: string;
+}
+
+export interface ResourceLinkComment {
+  id: string;
+  resource_link_id: string;
+  author_user_id: string;
+  author_name: string;
+  body: string;
+  created_at: string;
+}
+
 export interface ResourceSectionWithFiles {
   id: string;
   name: string;
   status: string;
   files: FileAttachment[];
+  links: ResourceLink[];
 }
 
 export interface CourseResources {
   sections: ResourceSectionWithFiles[];
   unsectioned_files: FileAttachment[];
+  unsectioned_links: ResourceLink[];
 }
 
 export interface CourseTeacher {

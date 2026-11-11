@@ -12,16 +12,27 @@ import type {
   CourseStudent,
   FileAttachment,
   Permissions,
+  ResourceLink,
 } from "../lib/types";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { downloadFile } from "../lib/download";
 import { formatDateTime } from "../lib/dates";
-import { DownloadIcon, EyeIcon, PencilIcon, TrashIcon } from "../components/icons";
+import { CloseIcon, DownloadIcon, EyeIcon, LinkIcon, PencilIcon, TrashIcon } from "../components/icons";
 import { ResourceTypeBadge } from "../components/ResourceTypeBadge";
 import { getResourceType, RESOURCE_TYPE_FILTERS, RESOURCE_UPLOAD_ACCEPT } from "../lib/resourceTypes";
+import {
+  detectLinkProvider,
+  getEmbedUrl,
+  getLinkHostname,
+  getProviderBadgeClass,
+  getProviderLabel,
+  getThumbnailUrl,
+  isAbsoluteHttpUrl,
+} from "../lib/linkPreview";
 import { StudentAvatar } from "../components/StudentAvatar";
+import { LinkPreviewModal } from "../components/LinkPreviewModal";
 import { useAuth } from "../context/AuthContext";
 
 // pdf.js pesa bastante (visor + worker); se carga bajo demanda recién al abrir
@@ -530,6 +541,7 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [previewFile, setPreviewFile] = useState<{ id: string; filename: string } | null>(null);
+  const [previewLink, setPreviewLink] = useState<ResourceLink | null>(null);
   const [filterName, setFilterName] = useState("");
   const [filterType, setFilterType] = useState("");
 
@@ -566,14 +578,25 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
     onSuccess: invalidate,
   });
 
+  const deleteLinkMutation = useMutation({
+    mutationFn: async (linkId: string) => apiClient.delete(`/resource-links/${linkId}`),
+    onSuccess: invalidate,
+  });
+
   if (isLoading) return <LoadingState label="Cargando recursos…" />;
   if (error) return <ErrorState error={error} />;
   if (!data) return null;
 
-  const hasNothing = data.sections.length === 0 && data.unsectioned_files.length === 0;
+  const hasNothing =
+    data.sections.length === 0 &&
+    data.unsectioned_files.length === 0 &&
+    data.unsectioned_links.length === 0;
 
   // Filtro de nombre/tipo (sección nueva): puramente de presentación, filtra lo
   // ya cargado en memoria — no agrega un endpoint ni cambia qué recursos existen.
+  // "link" no es un content-type real (ver lib/resourceTypes.ts), así que los
+  // enlaces se filtran aparte con su propio chequeo de tipo (cualquier enlace,
+  // sea video o página, cuenta como "Enlace").
   const hasFilter = filterName.trim() !== "" || filterType !== "";
   const normalizedName = filterName.trim().toLowerCase();
   function matchesFilter(file: FileAttachment): boolean {
@@ -581,12 +604,26 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
     const typeMatches = !filterType || getResourceType(file.content_type).key === filterType;
     return nameMatches && typeMatches;
   }
+  function matchesLinkFilter(link: ResourceLink): boolean {
+    const nameMatches = !normalizedName || link.title.toLowerCase().includes(normalizedName);
+    const typeMatches = !filterType || filterType === "link";
+    return nameMatches && typeMatches;
+  }
   const visibleSections = data.sections
-    .map((section) => ({ ...section, files: section.files.filter(matchesFilter) }))
-    .filter((section) => !hasFilter || section.files.length > 0);
+    .map((section) => ({
+      ...section,
+      files: section.files.filter(matchesFilter),
+      links: section.links.filter(matchesLinkFilter),
+    }))
+    .filter((section) => !hasFilter || section.files.length > 0 || section.links.length > 0);
   const visibleUnsectionedFiles = data.unsectioned_files.filter(matchesFilter);
+  const visibleUnsectionedLinks = data.unsectioned_links.filter(matchesLinkFilter);
   const noFilterMatches =
-    hasFilter && !hasNothing && visibleSections.length === 0 && visibleUnsectionedFiles.length === 0;
+    hasFilter &&
+    !hasNothing &&
+    visibleSections.length === 0 &&
+    visibleUnsectionedFiles.length === 0 &&
+    visibleUnsectionedLinks.length === 0;
 
   return (
     <div>
@@ -667,6 +704,7 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
                 {type.label}
               </option>
             ))}
+            <option value="link">Enlace</option>
           </select>
         </div>
       )}
@@ -730,6 +768,7 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
                       >
                         <PencilIcon />
                       </button>
+                      <ResourceLinkCreateInput sectionId={section.id} onCreated={invalidate} />
                       <button
                         type="button"
                         title="Eliminar"
@@ -753,27 +792,54 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
               )}
             </div>
 
-            {section.files.length === 0 ? (
-              <p className="text-sm text-slate-500">Sin archivos todavía.</p>
+            {section.files.length === 0 && section.links.length === 0 ? (
+              <p className="text-sm text-slate-500">Sin archivos ni enlaces todavía.</p>
             ) : (
-              <ResourceFileList files={section.files} onPreview={setPreviewFile} />
+              <ResourceFileList
+                files={section.files}
+                links={section.links}
+                onPreviewFile={setPreviewFile}
+                onPreviewLink={setPreviewLink}
+                canManage={isStaff}
+                onDeleteLink={(linkId) => {
+                  if (confirm("¿Quitar este enlace de la sección? Sus comentarios también se borran.")) {
+                    deleteLinkMutation.mutate(linkId);
+                  }
+                }}
+              />
             )}
 
-            {isStaff && <ResourceUploadInput sectionId={section.id} onUploaded={invalidate} />}
+            {isStaff && (
+              <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-brand-50 pt-2">
+                <ResourceUploadInput sectionId={section.id} onUploaded={invalidate} />
+              </div>
+            )}
           </section>
         ))}
 
-        {visibleUnsectionedFiles.length > 0 && (
+        {(visibleUnsectionedFiles.length > 0 || visibleUnsectionedLinks.length > 0) && (
           <section className="rounded-xl border border-dashed border-brand-200 bg-brand-50/60 p-4">
             <h3 className="mb-2 font-semibold text-brand-800">Sin sección</h3>
             <p className="mb-2 text-xs text-slate-500">
-              Archivos cuya sección fue eliminada; siguen disponibles aquí.
+              Recursos cuya sección fue eliminada; siguen disponibles aquí.
             </p>
-            <ResourceFileList files={visibleUnsectionedFiles} onPreview={setPreviewFile} />
+            <ResourceFileList
+              files={visibleUnsectionedFiles}
+              links={visibleUnsectionedLinks}
+              onPreviewFile={setPreviewFile}
+              onPreviewLink={setPreviewLink}
+              canManage={isStaff}
+              onDeleteLink={(linkId) => {
+                if (confirm("¿Quitar este enlace? Sus comentarios también se borran.")) {
+                  deleteLinkMutation.mutate(linkId);
+                }
+              }}
+            />
           </section>
         )}
       </div>
       {deleteMutation.isError && <ErrorState error={deleteMutation.error} />}
+      {deleteLinkMutation.isError && <ErrorState error={deleteLinkMutation.error} />}
 
       {previewFile && (
         <Suspense fallback={null}>
@@ -785,6 +851,8 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
           />
         </Suspense>
       )}
+
+      {previewLink && <LinkPreviewModal link={previewLink} onClose={() => setPreviewLink(null)} />}
     </div>
   );
 }
@@ -796,10 +864,18 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
 // "Sin sección" para no duplicar las tarjetas por archivo.
 function ResourceFileList({
   files,
-  onPreview,
+  links,
+  onPreviewFile,
+  onPreviewLink,
+  canManage,
+  onDeleteLink,
 }: {
   files: FileAttachment[];
-  onPreview: (file: { id: string; filename: string }) => void;
+  links: ResourceLink[];
+  onPreviewFile: (file: { id: string; filename: string }) => void;
+  onPreviewLink: (link: ResourceLink) => void;
+  canManage: boolean;
+  onDeleteLink: (linkId: string) => void;
 }) {
   return (
     <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -823,7 +899,7 @@ function ResourceFileList({
               {isPdf && (
                 <button
                   type="button"
-                  onClick={() => onPreview({ id: file.id, filename: file.filename })}
+                  onClick={() => onPreviewFile({ id: file.id, filename: file.filename })}
                   title="Ver"
                   aria-label={`Ver ${file.filename}`}
                   className="focus-ring rounded-md border border-brand-200 p-1.5 text-brand-700 hover:bg-brand-50"
@@ -844,7 +920,243 @@ function ResourceFileList({
           </li>
         );
       })}
+
+      {links.map((link) => {
+        const provider = detectLinkProvider(link.url);
+        const thumbnailUrl = getThumbnailUrl(link.url);
+        return (
+          <li
+            key={link.id}
+            className="flex flex-col gap-2 rounded-lg border border-brand-100 bg-white p-3"
+          >
+            <button
+              type="button"
+              onClick={() => onPreviewLink(link)}
+              className="focus-ring -m-1 overflow-hidden rounded-md"
+              title="Ver"
+              aria-label={`Ver ${link.title}`}
+            >
+              {thumbnailUrl ? (
+                <img src={thumbnailUrl} alt="" className="aspect-video w-full rounded-md object-cover" />
+              ) : (
+                <span className="flex aspect-video w-full items-center justify-center rounded-md bg-brand-50">
+                  <LinkIcon className="h-6 w-6 text-brand-400" />
+                </span>
+              )}
+            </button>
+            <div className="flex items-start justify-between gap-2">
+              <span
+                className={`inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold tracking-wide uppercase ring-1 ring-inset ${getProviderBadgeClass(provider)}`}
+              >
+                {getProviderLabel(provider)}
+              </span>
+              <span className="truncate text-[11px] text-slate-400">{getLinkHostname(link.url)}</span>
+            </div>
+            <p className="line-clamp-2 flex-1 text-sm text-brand-900" title={link.title}>
+              {link.title}
+            </p>
+            <div className="flex items-center gap-1 pt-1">
+              <button
+                type="button"
+                onClick={() => onPreviewLink(link)}
+                title="Ver"
+                aria-label={`Ver ${link.title}`}
+                className="focus-ring rounded-md border border-brand-200 p-1.5 text-brand-700 hover:bg-brand-50"
+              >
+                <EyeIcon />
+              </button>
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={() => onDeleteLink(link.id)}
+                  title="Quitar"
+                  aria-label={`Quitar enlace ${link.title}`}
+                  className="focus-ring rounded-md border border-red-200 p-1.5 text-red-700 hover:bg-red-50"
+                >
+                  <TrashIcon />
+                </button>
+              )}
+            </div>
+          </li>
+        );
+      })}
     </ul>
+  );
+}
+
+// Botón que abre AddLinkModal para agregar un enlace (video de YouTube/
+// Facebook/TikTok, o cualquier página) como recurso de una sección; separado
+// solo para no repetir la invalidación por cada sección renderizada.
+function ResourceLinkCreateInput({
+  sectionId,
+  onCreated,
+}: {
+  sectionId: string;
+  onCreated: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        title="Agregar enlace"
+        aria-label="Agregar enlace"
+        className="focus-ring rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-100"
+        onClick={() => setIsOpen(true)}
+      >
+        <LinkIcon />
+      </button>
+      {isOpen && (
+        <AddLinkModal
+          sectionId={sectionId}
+          onClose={() => setIsOpen(false)}
+          onCreated={() => {
+            setIsOpen(false);
+            onCreated();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// Cuadro modal para agregar un enlace (mismo patrón de overlay que
+// PdfPreviewModal.tsx/LinkPreviewModal.tsx): a medida que se escribe la URL se
+// reconoce en el momento si es un video de un proveedor con vista previa
+// incrustable (lib/linkPreview.ts, espejo del parser del backend para
+// YouTube) y se muestra ese video embebido real antes de confirmar. Una
+// página cualquiera (o un video de Facebook/TikTok sin un id individual
+// reconocible) no tiene vista previa aquí — la mayoría de sitios bloquean
+// mostrarse en un iframe — pero igual se puede agregar, solo se avisa que no
+// hay vista previa disponible. Nunca se guarda nada hasta hacer clic en
+// "Agregar"; el backend vuelve a validar la URL de todos modos (ver
+// learning/service.py::_validate_url).
+function AddLinkModal({
+  sectionId,
+  onClose,
+  onCreated,
+}: {
+  sectionId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [url, setUrl] = useState("");
+  const trimmedUrl = url.trim();
+  const isValidUrl = isAbsoluteHttpUrl(trimmedUrl);
+  const embedUrl = isValidUrl ? getEmbedUrl(trimmedUrl) : null;
+
+  const createMutation = useMutation({
+    mutationFn: async () =>
+      (await apiClient.post(`/resource-sections/${sectionId}/links`, { title, url: trimmedUrl })).data,
+    onSuccess: onCreated,
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-brand-100 p-3">
+          <p className="font-display font-medium text-brand-900">Agregar enlace</p>
+          <button
+            type="button"
+            onClick={onClose}
+            title="Cerrar"
+            aria-label="Cerrar"
+            className="focus-ring rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-100"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <form
+          className="space-y-3 overflow-y-auto p-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (title.trim() && isValidUrl) createMutation.mutate();
+          }}
+        >
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600" htmlFor="link-title">
+              Título
+            </label>
+            <input
+              id="link-title"
+              autoFocus
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Introducción al tema"
+              className="focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600" htmlFor="link-url">
+              Enlace (video de YouTube, Facebook, TikTok, o cualquier página web)
+            </label>
+            <input
+              id="link-url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://…"
+              className="focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+            />
+            {trimmedUrl !== "" && !isValidUrl && (
+              <p className="mt-1 text-xs text-red-600">
+                Ingresa una URL completa (debe empezar con http:// o https://).
+              </p>
+            )}
+          </div>
+
+          {isValidUrl && (
+            <div>
+              <p className="mb-1 text-xs font-medium text-slate-600">Vista previa</p>
+              {embedUrl ? (
+                <div className="aspect-video w-full overflow-hidden rounded-lg bg-black">
+                  <iframe
+                    key={embedUrl}
+                    src={embedUrl}
+                    title="Vista previa"
+                    allow="accelerometer; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    className="h-full w-full"
+                  />
+                </div>
+              ) : (
+                <p className="flex items-center gap-2 rounded-lg border border-dashed border-brand-200 bg-brand-50/60 p-3 text-xs text-brand-700">
+                  <LinkIcon className="h-4 w-4 shrink-0" />
+                  Sin vista previa disponible para este enlace; de todas formas se puede agregar.
+                </p>
+              )}
+            </div>
+          )}
+
+          {createMutation.isError && <ErrorState error={createMutation.error} />}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              className="focus-ring rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+              onClick={onClose}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={!title.trim() || !isValidUrl || createMutation.isPending}
+              className="focus-ring rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+            >
+              {createMutation.isPending ? "Agregando…" : "Agregar"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 

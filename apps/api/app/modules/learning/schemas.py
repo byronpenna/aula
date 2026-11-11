@@ -74,13 +74,43 @@ class ResourceSectionOut(BaseModel):
     status: str
 
 
+class ResourceLinkCreate(BaseModel):
+    title: str
+    url: str
+
+
+class ResourceLinkOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    resource_section_id: uuid.UUID
+    title: str
+    url: str
+    created_at: datetime
+
+
+class ResourceLinkCommentCreate(BaseModel):
+    body: str
+
+
+class ResourceLinkCommentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    resource_link_id: uuid.UUID
+    author_user_id: uuid.UUID
+    author_name: str = ""
+    body: str
+    created_at: datetime
+
+
 class ResourceSectionWithFilesOut(BaseModel):
     id: uuid.UUID
     name: str
     status: str
     files: list[FileOut]
+    links: list[ResourceLinkOut]
 
 
 class CourseResourcesOut(BaseModel):
     sections: list[ResourceSectionWithFilesOut]
     unsectioned_files: list[FileOut]
+    unsectioned_links: list[ResourceLinkOut]

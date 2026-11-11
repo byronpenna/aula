@@ -11,12 +11,21 @@ from app.db.session import get_db
 from app.modules.identity.models import User
 from app.modules.learning import repository as learning_repo
 from app.modules.learning import service as learning_service
-from app.modules.learning.models import Assignment, ResourceSection
+from app.modules.learning.models import (
+    Assignment,
+    ResourceLink,
+    ResourceLinkComment,
+    ResourceSection,
+)
 from app.modules.learning.schemas import (
     AssignmentCreate,
     AssignmentOut,
     AssignmentUpdate,
     CourseResourcesOut,
+    ResourceLinkCommentCreate,
+    ResourceLinkCommentOut,
+    ResourceLinkCreate,
+    ResourceLinkOut,
     ResourceSectionCreate,
     ResourceSectionOut,
     ResourceSectionUpdate,
@@ -211,4 +220,53 @@ def delete_resource_section(
 ) -> ResourceSection:
     return learning_service.delete_resource_section(
         db, current, user.id, section_id, request.state.request_id
+    )
+
+
+@router.post("/resource-sections/{section_id}/links", response_model=ResourceLinkOut)
+def create_resource_link(
+    section_id: uuid.UUID,
+    payload: ResourceLinkCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> ResourceLink:
+    return learning_service.create_resource_link(
+        db, current, user.id, section_id, payload, request.state.request_id
+    )
+
+
+@router.delete("/resource-links/{link_id}", status_code=204, response_model=None)
+def delete_resource_link(
+    link_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> None:
+    learning_service.delete_resource_link(db, current, user.id, link_id, request.state.request_id)
+
+
+@router.get("/resource-links/{link_id}/comments", response_model=list[ResourceLinkCommentOut])
+def list_link_comments(
+    link_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> list[ResourceLinkComment]:
+    return learning_service.list_link_comments(db, current, user.id, link_id)
+
+
+@router.post("/resource-links/{link_id}/comments", response_model=ResourceLinkCommentOut)
+def create_link_comment(
+    link_id: uuid.UUID,
+    payload: ResourceLinkCommentCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> ResourceLinkComment:
+    return learning_service.create_link_comment(
+        db, current, user.id, link_id, payload, request.state.request_id
     )
