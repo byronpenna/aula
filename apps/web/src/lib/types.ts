@@ -262,6 +262,42 @@ export interface CourseCalendarEvent {
   created_at: string;
 }
 
+export interface CoursePostPollOption {
+  id: string;
+  label: string;
+  vote_count: number;
+  voted_by_me: boolean;
+}
+
+export interface CoursePostPoll {
+  id: string;
+  question: string;
+  allow_multiple: boolean;
+  total_votes: number;
+  options: CoursePostPollOption[];
+}
+
+export interface CoursePost {
+  id: string;
+  course_id: string;
+  author_user_id: string;
+  author_name: string;
+  body: string;
+  created_at: string;
+  images: FileAttachment[];
+  poll: CoursePostPoll | null;
+  comment_count: number;
+}
+
+export interface CoursePostComment {
+  id: string;
+  post_id: string;
+  author_user_id: string;
+  author_name: string;
+  body: string;
+  created_at: string;
+}
+
 export interface Submission {
   id: string;
   assignment_id: string;

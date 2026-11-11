@@ -257,6 +257,47 @@ def upload_resource_file(
     )
 
 
+def upload_course_post_image(
+    db: Session,
+    settings: Settings,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    post_id: uuid.UUID,
+    filename: str,
+    content_type: str,
+    content: bytes,
+) -> File:
+    """Imagen de una publicación del curso (sección nueva, tipo "red social"):
+    solo imágenes (mismo conjunto que upload_student_photo), y solo quien
+    administra el curso puntual puede agregarlas — igual criterio que crear la
+    publicación misma (ASSIGNMENT_MANAGE + require_course_access, ver
+    learning/service.py::create_course_post)."""
+    post = learning_repo.get_course_post(db, current.school_id, post_id)
+    if post is None:
+        raise NotFoundError("La publicación indicada no existe en este colegio.")
+    course = academics_repo.get_course(db, current.school_id, post.course_id)
+    if course is None:
+        raise NotFoundError("El curso de la publicación no existe en este colegio.")
+    academics_service.require_course_access(db, current, user_id, course)
+
+    if content_type not in STUDENT_PHOTO_CONTENT_TYPES:
+        raise UnprocessableError(
+            f"Tipo de archivo no permitido: {content_type}.",
+            details={"allowed": sorted(STUDENT_PHOTO_CONTENT_TYPES)},
+        )
+    return _store(
+        db,
+        settings,
+        school_id=current.school_id,
+        owner_user_id=user_id,
+        attached_to_type="course_post",
+        attached_to_id=post_id,
+        filename=filename,
+        content_type=content_type,
+        content=content,
+    )
+
+
 def upload_student_photo(
     db: Session,
     settings: Settings,
@@ -331,6 +372,16 @@ def get_download(
         # no se expone todavía al alumno ni a su tutor.
         if ENROLLMENT_MANAGE not in current.permission_codes:
             raise ForbiddenError("No puedes ver esta fotografía.")
+    elif file.attached_to_type == "course_post":
+        # Cualquiera con acceso al curso ve la imagen de la publicación — es
+        # contenido pensado para toda la clase, no solo para quien administra.
+        post = learning_repo.get_course_post(db, current.school_id, file.attached_to_id)
+        if post is None:
+            raise NotFoundError("La publicación asociada ya no existe.")
+        course = academics_repo.get_course(db, current.school_id, post.course_id)
+        if course is None:
+            raise NotFoundError("El curso de la publicación no existe en este colegio.")
+        academics_service.require_course_access(db, current, user_id, course)
     else:  # pragma: no cover - no debería ocurrir, tipos cerrados a los de arriba
         raise NotFoundError("El archivo indicado no existe en este colegio.")
 

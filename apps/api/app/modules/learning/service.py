@@ -24,6 +24,11 @@ from app.modules.learning import repository as learning_repo
 from app.modules.learning.models import (
     Assignment,
     CourseCalendarEvent,
+    CoursePost,
+    CoursePostComment,
+    CoursePostPoll,
+    CoursePostPollOption,
+    CoursePostPollVote,
     ResourceLink,
     ResourceLinkComment,
     ResourceSection,
@@ -34,6 +39,9 @@ from app.modules.learning.schemas import (
     AssignmentCreate,
     AssignmentUpdate,
     CourseCalendarEventCreate,
+    CoursePostCommentCreate,
+    CoursePostCreate,
+    PollVoteRequest,
     ResourceLinkCommentCreate,
     ResourceLinkCreate,
 )
@@ -689,3 +697,285 @@ def create_link_comment(
     author = identity_repo.get_user(db, user_id)
     comment.author_name = author.display_name if author else "Usuario eliminado"  # type: ignore[attr-defined]
     return comment
+
+
+# --- Publicaciones del curso (tipo "red social") -----------------------------
+#
+# Igual criterio que una fecha importante (sección de arriba): publicar/quitar
+# exige ASSIGNMENT_MANAGE + require_course_access scopeado a este curso
+# (admin/coordinación, o el docente asignado); comentar y votar en la encuesta
+# solo exigen estar en el curso (require_course_access) — "discutida por los
+# alumnos", no exclusivo de staff. Las imágenes reutilizan el módulo `files`
+# (attached_to_type="course_post"); nunca se construyen aquí.
+
+
+def _require_course_post(
+    db: Session, current: CurrentMembership, post_id: uuid.UUID
+) -> tuple[CoursePost, Course]:
+    post = learning_repo.get_course_post(db, current.school_id, post_id)
+    if post is None:
+        raise NotFoundError("La publicación indicada no existe en este colegio.")
+    course = _require_course(db, current, post.course_id)
+    return post, course
+
+
+def _build_poll_out(
+    db: Session, school_id: uuid.UUID, user_id: uuid.UUID, poll: CoursePostPoll
+) -> dict:
+    options = learning_repo.list_poll_options(db, school_id, poll.id)
+    votes = learning_repo.list_votes_for_options(db, [o.id for o in options])
+
+    counts: dict[uuid.UUID, int] = {}
+    voted_option_ids: set[uuid.UUID] = set()
+    voter_ids: set[uuid.UUID] = set()
+    for vote in votes:
+        counts[vote.poll_option_id] = counts.get(vote.poll_option_id, 0) + 1
+        voter_ids.add(vote.voter_user_id)
+        if vote.voter_user_id == user_id:
+            voted_option_ids.add(vote.poll_option_id)
+
+    return {
+        "id": poll.id,
+        "question": poll.question,
+        "allow_multiple": poll.allow_multiple,
+        # Personas distintas que votaron, no suma de opciones marcadas — así el
+        # porcentaje de cada opción en el frontend tiene sentido incluso cuando
+        # la encuesta admite más de una opción por persona.
+        "total_votes": len(voter_ids),
+        "options": [
+            {
+                "id": option.id,
+                "label": option.label,
+                "vote_count": counts.get(option.id, 0),
+                "voted_by_me": option.id in voted_option_ids,
+            }
+            for option in options
+        ],
+    }
+
+
+def _build_post_out(
+    db: Session, current: CurrentMembership, user_id: uuid.UUID, post: CoursePost
+) -> dict:
+    author = identity_repo.get_user(db, post.author_user_id)
+    images = files_repo.list_files(db, current.school_id, "course_post", post.id)
+    comment_count = learning_repo.count_post_comments(db, current.school_id, post.id)
+    poll = learning_repo.get_poll_by_post(db, current.school_id, post.id)
+    return {
+        "id": post.id,
+        "course_id": post.course_id,
+        "author_user_id": post.author_user_id,
+        "author_name": author.display_name if author else "Usuario eliminado",
+        "body": post.body,
+        "created_at": post.created_at,
+        "images": images,
+        "poll": _build_poll_out(db, current.school_id, user_id, poll) if poll else None,
+        "comment_count": comment_count,
+    }
+
+
+def list_course_posts(
+    db: Session, current: CurrentMembership, user_id: uuid.UUID, course_id: uuid.UUID
+) -> list[dict]:
+    course = _require_course(db, current, course_id)
+    academics_service.require_course_access(db, current, user_id, course)
+    posts = learning_repo.list_course_posts(db, current.school_id, course_id)
+    return [_build_post_out(db, current, user_id, post) for post in posts]
+
+
+def create_course_post(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    course_id: uuid.UUID,
+    payload: CoursePostCreate,
+    request_id: str | None,
+) -> dict:
+    course = _require_course(db, current, course_id)
+    academics_service.require_course_access(db, current, user_id, course)
+
+    body = payload.body.strip()
+    if not body:
+        raise UnprocessableError("La publicación no puede estar vacía.")
+
+    clean_question = ""
+    clean_options: list[str] = []
+    if payload.poll is not None:
+        clean_question = _clean_name(payload.poll.question)
+        if not clean_question:
+            raise UnprocessableError("La pregunta de la encuesta no puede estar vacía.")
+        clean_options = [
+            cleaned for o in payload.poll.options if (cleaned := _clean_name(o.label))
+        ]
+        if len(clean_options) < 2:
+            raise UnprocessableError("La encuesta necesita al menos dos opciones.")
+
+    post = CoursePost(
+        school_id=current.school_id, course_id=course_id, author_user_id=user_id, body=body
+    )
+    db.add(post)
+    db.flush()
+
+    if payload.poll is not None:
+        poll = CoursePostPoll(
+            school_id=current.school_id,
+            post_id=post.id,
+            question=clean_question,
+            allow_multiple=payload.poll.allow_multiple,
+        )
+        db.add(poll)
+        db.flush()
+        for position, label in enumerate(clean_options):
+            db.add(
+                CoursePostPollOption(
+                    school_id=current.school_id, poll_id=poll.id, label=label, position=position
+                )
+            )
+
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="course_post.create",
+        target_type="course_post",
+        target_id=str(post.id),
+        request_id=request_id,
+    )
+    db.commit()
+    db.refresh(post)
+    return _build_post_out(db, current, user_id, post)
+
+
+def delete_course_post(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    post_id: uuid.UUID,
+    request_id: str | None,
+) -> None:
+    post, course = _require_course_post(db, current, post_id)
+    academics_service.require_course_access(db, current, user_id, course)
+
+    poll = learning_repo.get_poll_by_post(db, current.school_id, post.id)
+    if poll is not None:
+        learning_repo.delete_poll_cascade(db, poll.id)
+        db.delete(poll)
+    learning_repo.delete_post_comments(db, post.id)
+    db.flush()  # fuerza los DELETE de hijos antes del de course_posts (FK)
+    db.delete(post)
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="course_post.delete",
+        target_type="course_post",
+        target_id=str(post_id),
+        request_id=request_id,
+    )
+    db.commit()
+
+
+def _with_post_comment_author_names(
+    db: Session, comments: list[CoursePostComment]
+) -> list[CoursePostComment]:
+    names: dict[uuid.UUID, str] = {}
+    for comment in comments:
+        if comment.author_user_id not in names:
+            author = identity_repo.get_user(db, comment.author_user_id)
+            names[comment.author_user_id] = author.display_name if author else "Usuario eliminado"
+        comment.author_name = names[comment.author_user_id]  # type: ignore[attr-defined]
+    return comments
+
+
+def list_post_comments(
+    db: Session, current: CurrentMembership, user_id: uuid.UUID, post_id: uuid.UUID
+) -> list[CoursePostComment]:
+    post, course = _require_course_post(db, current, post_id)
+    academics_service.require_course_access(db, current, user_id, course)
+    comments = learning_repo.list_post_comments(db, current.school_id, post.id)
+    return _with_post_comment_author_names(db, comments)
+
+
+def create_post_comment(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    post_id: uuid.UUID,
+    payload: CoursePostCommentCreate,
+    request_id: str | None,
+) -> CoursePostComment:
+    """Igual criterio que comentar un enlace de recursos: cualquiera en el
+    curso puede comentar una publicación, no solo quien la administra."""
+    post, course = _require_course_post(db, current, post_id)
+    academics_service.require_course_access(db, current, user_id, course)
+
+    body = payload.body.strip()
+    if not body:
+        raise UnprocessableError("El comentario no puede estar vacío.")
+
+    comment = CoursePostComment(
+        school_id=current.school_id, post_id=post.id, author_user_id=user_id, body=body
+    )
+    db.add(comment)
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="course_post_comment.create",
+        target_type="course_post_comment",
+        target_id=str(comment.id),
+        request_id=request_id,
+    )
+    db.commit()
+    db.refresh(comment)
+    author = identity_repo.get_user(db, user_id)
+    comment.author_name = author.display_name if author else "Usuario eliminado"  # type: ignore[attr-defined]
+    return comment
+
+
+def vote_on_poll(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    poll_id: uuid.UUID,
+    payload: PollVoteRequest,
+    request_id: str | None,
+) -> dict:
+    poll = learning_repo.get_poll(db, current.school_id, poll_id)
+    if poll is None:
+        raise NotFoundError("La encuesta indicada no existe en este colegio.")
+    _post, course = _require_course_post(db, current, poll.post_id)
+    academics_service.require_course_access(db, current, user_id, course)
+
+    all_options = learning_repo.list_poll_options(db, current.school_id, poll.id)
+    valid_option_ids = {option.id for option in all_options}
+    all_option_ids = list(valid_option_ids)
+
+    chosen_ids = list(dict.fromkeys(payload.option_ids))  # únicos, conserva el orden
+    for option_id in chosen_ids:
+        if option_id not in valid_option_ids:
+            raise UnprocessableError("Una de las opciones no pertenece a esta encuesta.")
+    if not poll.allow_multiple and len(chosen_ids) > 1:
+        raise UnprocessableError("Esta encuesta solo admite una opción.")
+
+    # Votar siempre reemplaza el conjunto completo de opciones marcadas por
+    # quien vota (sección 6, ver el docstring del módulo), nunca se acumula.
+    learning_repo.delete_votes_by_voter(db, all_option_ids, user_id)
+    db.flush()
+    for option_id in chosen_ids:
+        db.add(
+            CoursePostPollVote(
+                school_id=current.school_id, poll_option_id=option_id, voter_user_id=user_id
+            )
+        )
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="course_post_poll.vote",
+        target_type="course_post_poll",
+        target_id=str(poll.id),
+        request_id=request_id,
+    )
+    db.commit()
+    return _build_poll_out(db, current.school_id, user_id, poll)

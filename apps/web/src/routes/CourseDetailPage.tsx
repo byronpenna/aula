@@ -44,6 +44,7 @@ import {
 import { StudentAvatar } from "../components/StudentAvatar";
 import { DatePicker } from "../components/DatePicker";
 import { LinkPreviewModal } from "../components/LinkPreviewModal";
+import { CoursePostsSection } from "../components/CoursePostsSection";
 import { useAuth } from "../context/AuthContext";
 
 // pdf.js pesa bastante (visor + worker); se carga bajo demanda recién al abrir
@@ -52,11 +53,12 @@ const PdfPreviewModal = lazy(() =>
   import("../components/PdfPreviewModal").then((m) => ({ default: m.PdfPreviewModal })),
 );
 
-type TabKey = "tareas" | "recursos" | "calendario";
+type TabKey = "tareas" | "recursos" | "calendario" | "posts";
 const TABS: { key: TabKey; label: string }[] = [
   { key: "tareas", label: "Tareas" },
   { key: "recursos", label: "Recursos" },
   { key: "calendario", label: "Calendario" },
+  { key: "posts", label: "Posts" },
 ];
 
 // max_score se mantiene como string en el formulario (los inputs HTML son texto) y
@@ -156,6 +158,10 @@ export function CourseDetailPage() {
 
       {tab === "calendario" && courseId && (
         <CourseCalendarSection courseId={courseId} isStaff={isStaff} assignments={data ?? []} />
+      )}
+
+      {tab === "posts" && courseId && (
+        <CoursePostsSection courseId={courseId} isStaff={isStaff} />
       )}
 
       {tab === "tareas" && (
@@ -914,6 +920,7 @@ function CourseCalendarSection({
   const queryClient = useQueryClient();
   const [viewMonth, setViewMonth] = useState(() => monthStart(new Date()));
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const queryKey = ["courses", courseId, "calendar-events"];
   const { data, isLoading, error } = useQuery<CourseCalendarEvent[]>({
@@ -1017,9 +1024,17 @@ function CourseCalendarSection({
             const key = dateKey(day);
             const dayItems = itemsByDate.get(key) ?? [];
             return (
-              <div
+              <button
                 key={key}
-                className={`flex flex-col items-center gap-0.5 rounded-md py-1.5 text-sm ${
+                type="button"
+                onClick={() => setSelectedDate(key)}
+                title={
+                  dayItems.length > 0
+                    ? `${dayItems.length === 1 ? "1 actividad" : `${dayItems.length} actividades`} — ver día`
+                    : "Ver día"
+                }
+                aria-label={`${formatDateOnly(key)}${dayItems.length > 0 ? `, ${dayItems.length} actividad(es)` : ""}`}
+                className={`focus-ring flex flex-col items-center gap-0.5 rounded-md py-1.5 text-sm hover:bg-brand-50 ${
                   key === todayKey ? "bg-brand-50 font-semibold text-brand-900" : "text-slate-700"
                 }`}
               >
@@ -1036,7 +1051,7 @@ function CourseCalendarSection({
                     ))}
                   </span>
                 )}
-              </div>
+              </button>
             );
           })}
         </div>
@@ -1118,6 +1133,191 @@ function CourseCalendarSection({
           }}
         />
       )}
+
+      {selectedDate && (
+        <DayEventsModal
+          date={selectedDate}
+          items={itemsByDate.get(selectedDate) ?? []}
+          courseId={courseId}
+          isStaff={isStaff}
+          onClose={() => setSelectedDate(null)}
+          onDeleteEvent={(eventId) => {
+            if (confirm("¿Quitar esta fecha importante del calendario?")) {
+              deleteMutation.mutate(eventId);
+            }
+          }}
+          onCreated={() => queryClient.invalidateQueries({ queryKey })}
+        />
+      )}
+    </div>
+  );
+}
+
+// Modal que abre un día de la cuadrícula (clic sobre el número): muestra las
+// actividades de ese día puntual (tareas y fechas importantes) y, para quien
+// administra el curso, un formulario para agregar una fecha importante nueva
+// ya con ese día fijado — sin tener que volver a elegirlo en otro cuadro.
+function DayEventsModal({
+  date,
+  items,
+  courseId,
+  isStaff,
+  onClose,
+  onDeleteEvent,
+  onCreated,
+}: {
+  date: string;
+  items: CalendarItem[];
+  courseId: string;
+  isStaff: boolean;
+  onClose: () => void;
+  onDeleteEvent: (eventId: string) => void;
+  onCreated: () => void;
+}) {
+  const [isAdding, setIsAdding] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+
+  const createMutation = useMutation({
+    mutationFn: async () =>
+      (
+        await apiClient.post(`/courses/${courseId}/calendar-events`, {
+          title,
+          event_date: date,
+          description: description.trim() || null,
+        })
+      ).data,
+    onSuccess: () => {
+      setTitle("");
+      setDescription("");
+      setIsAdding(false);
+      onCreated();
+    },
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-brand-100 p-3">
+          <p className="font-display font-medium text-brand-900">{formatDateOnly(date)}</p>
+          <button
+            type="button"
+            onClick={onClose}
+            title="Cerrar"
+            aria-label="Cerrar"
+            className="focus-ring rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-100"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <div className="space-y-3 overflow-y-auto p-4">
+          {items.length === 0 ? (
+            <p className="text-sm text-slate-500">Sin actividades este día.</p>
+          ) : (
+            <ul className="space-y-2">
+              {items.map((item) => (
+                <li
+                  key={`${item.kind}-${item.id}`}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-brand-100 bg-white p-2.5"
+                >
+                  <div className="min-w-0">
+                    {item.kind === "assignment" ? (
+                      <Link
+                        to={`/assignments/${item.id}?courseId=${courseId}`}
+                        className="focus-ring text-sm font-medium text-brand-900 hover:underline"
+                      >
+                        {item.title}
+                      </Link>
+                    ) : (
+                      <p className="text-sm font-medium text-brand-900">{item.title}</p>
+                    )}
+                    {item.kind === "event" && item.description && (
+                      <p className="text-xs text-slate-500">{item.description}</p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {item.kind === "assignment" ? (
+                      <StatusBadge status={item.status} />
+                    ) : (
+                      <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-200">
+                        Fecha importante
+                      </span>
+                    )}
+                    {isStaff && item.kind === "event" && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteEvent(item.id)}
+                        title="Quitar"
+                        aria-label={`Quitar ${item.title}`}
+                        className="focus-ring rounded-md border border-red-200 p-1.5 text-red-700 hover:bg-red-50"
+                      >
+                        <TrashIcon />
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {isStaff &&
+            (isAdding ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (title.trim()) createMutation.mutate();
+                }}
+                className="space-y-2 rounded-lg border border-brand-100 bg-brand-50/40 p-3"
+              >
+                <input
+                  autoFocus
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Título"
+                  className="focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+                />
+                <input
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Descripción (opcional)"
+                  className="focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+                />
+                {createMutation.isError && <ErrorState error={createMutation.error} />}
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAdding(false)}
+                    className="focus-ring rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!title.trim() || createMutation.isPending}
+                    className="focus-ring rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+                  >
+                    Guardar
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsAdding(true)}
+                className="focus-ring w-full rounded-md border border-dashed border-brand-300 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50"
+              >
+                + Agregar fecha importante este día
+              </button>
+            ))}
+        </div>
+      </div>
     </div>
   );
 }

@@ -14,6 +14,7 @@ from app.modules.learning import service as learning_service
 from app.modules.learning.models import (
     Assignment,
     CourseCalendarEvent,
+    CoursePostComment,
     ResourceLink,
     ResourceLinkComment,
     ResourceSection,
@@ -24,7 +25,13 @@ from app.modules.learning.schemas import (
     AssignmentUpdate,
     CourseCalendarEventCreate,
     CourseCalendarEventOut,
+    CoursePostCommentCreate,
+    CoursePostCommentOut,
+    CoursePostCreate,
+    CoursePostOut,
+    CoursePostPollOut,
     CourseResourcesOut,
+    PollVoteRequest,
     ResourceLinkCommentCreate,
     ResourceLinkCommentOut,
     ResourceLinkCreate,
@@ -312,3 +319,79 @@ def create_link_comment(
     return learning_service.create_link_comment(
         db, current, user.id, link_id, payload, request.state.request_id
     )
+
+
+@router.get("/courses/{course_id}/posts", response_model=list[CoursePostOut])
+def list_course_posts(
+    course_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> list[CoursePostOut]:
+    data = learning_service.list_course_posts(db, current, user.id, course_id)
+    return [CoursePostOut(**d) for d in data]
+
+
+@router.post("/courses/{course_id}/posts", response_model=CoursePostOut)
+def create_course_post(
+    course_id: uuid.UUID,
+    payload: CoursePostCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(ASSIGNMENT_MANAGE)),
+) -> CoursePostOut:
+    data = learning_service.create_course_post(
+        db, current, user.id, course_id, payload, request.state.request_id
+    )
+    return CoursePostOut(**data)
+
+
+@router.delete("/posts/{post_id}", status_code=204, response_model=None)
+def delete_course_post(
+    post_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(ASSIGNMENT_MANAGE)),
+) -> None:
+    learning_service.delete_course_post(db, current, user.id, post_id, request.state.request_id)
+
+
+@router.get("/posts/{post_id}/comments", response_model=list[CoursePostCommentOut])
+def list_post_comments(
+    post_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> list[CoursePostComment]:
+    return learning_service.list_post_comments(db, current, user.id, post_id)
+
+
+@router.post("/posts/{post_id}/comments", response_model=CoursePostCommentOut)
+def create_post_comment(
+    post_id: uuid.UUID,
+    payload: CoursePostCommentCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> CoursePostComment:
+    return learning_service.create_post_comment(
+        db, current, user.id, post_id, payload, request.state.request_id
+    )
+
+
+@router.post("/course-post-polls/{poll_id}/vote", response_model=CoursePostPollOut)
+def vote_on_poll(
+    poll_id: uuid.UUID,
+    payload: PollVoteRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> CoursePostPollOut:
+    data = learning_service.vote_on_poll(
+        db, current, user.id, poll_id, payload, request.state.request_id
+    )
+    return CoursePostPollOut(**data)

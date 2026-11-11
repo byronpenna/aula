@@ -156,3 +156,82 @@ class SubmissionRevision(UUIDPKMixin, Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+# --- Publicaciones del curso (tipo "red social") -----------------------------
+#
+# Agregar/quitar una publicación es acción de quien administra el curso (mismo
+# criterio que una fecha importante o un recurso: ASSIGNMENT_MANAGE +
+# require_course_access scopeado a este curso puntual); verla, comentarla y
+# votar en su encuesta alcanza con course:read — "discutida por los alumnos",
+# no solo staff (ver learning/service.py::create_post_comment). Las imágenes
+# de una publicación reutilizan el módulo `files` ya existente
+# (attached_to_type="course_post"), igual patrón que los recursos de curso —
+# nunca una tabla de imágenes aparte.
+
+
+class CoursePost(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
+    __tablename__ = "course_posts"
+
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("courses.id"), nullable=False, index=True
+    )
+    author_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    body: Mapped[str] = mapped_column(nullable=False)
+
+
+class CoursePostComment(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
+    """Comentario de discusión sobre una publicación: cualquiera con acceso al
+    curso puede comentar (require_course_access), igual criterio que
+    ResourceLinkComment — nunca exclusivo de quien administra el curso."""
+
+    __tablename__ = "course_post_comments"
+
+    post_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("course_posts.id"), nullable=False, index=True
+    )
+    author_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    body: Mapped[str] = mapped_column(nullable=False)
+
+
+class CoursePostPoll(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
+    """Encuesta de una publicación (1:1, opcional — no toda publicación tiene
+    una). `allow_multiple` decide si se admite más de una opción marcada a la
+    vez; votar siempre reemplaza el conjunto completo de opciones marcadas por
+    quien vota, nunca se acumula (ver learning/service.py::vote_on_poll)."""
+
+    __tablename__ = "course_post_polls"
+
+    post_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("course_posts.id"), nullable=False, unique=True
+    )
+    question: Mapped[str] = mapped_column(nullable=False)
+    allow_multiple: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class CoursePostPollOption(UUIDPKMixin, SchoolScopedMixin, Base):
+    __tablename__ = "course_post_poll_options"
+
+    poll_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("course_post_polls.id"), nullable=False, index=True
+    )
+    label: Mapped[str] = mapped_column(nullable=False)
+    position: Mapped[int] = mapped_column(nullable=False, default=0)
+
+
+class CoursePostPollVote(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
+    __tablename__ = "course_post_poll_votes"
+    __table_args__ = (
+        UniqueConstraint("poll_option_id", "voter_user_id", name="uq_vote_option_voter"),
+    )
+
+    poll_option_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("course_post_poll_options.id"), nullable=False, index=True
+    )
+    voter_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )

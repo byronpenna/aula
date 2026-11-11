@@ -130,3 +130,63 @@ class CourseResourcesOut(BaseModel):
     sections: list[ResourceSectionWithFilesOut]
     unsectioned_files: list[FileOut]
     unsectioned_links: list[ResourceLinkOut]
+
+
+class CoursePostPollOptionCreate(BaseModel):
+    label: str
+
+
+class CoursePostPollCreate(BaseModel):
+    question: str
+    allow_multiple: bool = False
+    options: list[CoursePostPollOptionCreate]
+
+
+class CoursePostCreate(BaseModel):
+    body: str
+    poll: CoursePostPollCreate | None = None
+
+
+class CoursePostPollOptionOut(BaseModel):
+    id: uuid.UUID
+    label: str
+    vote_count: int
+    voted_by_me: bool
+
+
+class CoursePostPollOut(BaseModel):
+    id: uuid.UUID
+    question: str
+    allow_multiple: bool
+    total_votes: int
+    options: list[CoursePostPollOptionOut]
+
+
+class CoursePostOut(BaseModel):
+    id: uuid.UUID
+    course_id: uuid.UUID
+    author_user_id: uuid.UUID
+    author_name: str = ""
+    body: str
+    created_at: datetime
+    images: list[FileOut]
+    poll: CoursePostPollOut | None
+    comment_count: int
+
+
+class CoursePostCommentCreate(BaseModel):
+    body: str
+
+
+class CoursePostCommentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    post_id: uuid.UUID
+    author_user_id: uuid.UUID
+    author_name: str = ""
+    body: str
+    created_at: datetime
+
+
+class PollVoteRequest(BaseModel):
+    option_ids: list[uuid.UUID]

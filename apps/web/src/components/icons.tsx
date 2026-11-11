@@ -118,3 +118,29 @@ export function CalendarIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function ImageIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <rect x="3" y="4" width="14" height="12" rx="1.5" />
+      <circle cx="7.5" cy="8.5" r="1.25" />
+      <path d="M3.8 15.5 8 11l2.5 2.5L14 10l2.7 2.7" />
+    </svg>
+  );
+}
+
+export function ChatIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M3.5 5.5h13v8h-6.5L6.5 16v-2.5h-3Z" />
+    </svg>
+  );
+}
+
+export function PollIcon(props: IconProps) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M5 16V9M10 16V4M15 16v-6" />
+    </svg>
+  );
+}
