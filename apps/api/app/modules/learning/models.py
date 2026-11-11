@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, Time, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -47,6 +47,10 @@ class CourseCalendarEvent(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
     title: Mapped[str] = mapped_column(nullable=False)
     description: Mapped[str | None] = mapped_column(nullable=True)
     event_date: Mapped[date] = mapped_column(nullable=False)
+    # Hora puntual del evento (examen a las 10:00, por ejemplo); None significa
+    # "todo el día" — una fecha importante sin hora específica (día festivo,
+    # plazo genérico), no un valor pendiente de llenar.
+    event_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     created_by_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )

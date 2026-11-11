@@ -50,6 +50,47 @@ def test_teacher_creates_and_lists_calendar_events(db_session, client, unique_su
     assert events[0]["description"] == "Trae el proyecto impreso y en USB."
 
 
+def test_calendar_event_optional_time_and_ordering_within_day(db_session, client, unique_suffix):
+    f.ensure_role_catalog(db_session)
+    school = f.create_school(db_session, f"Escuela {unique_suffix}")
+    structure = f.create_academic_structure(db_session, school)
+    admin = f.create_user(db_session, display_name="Admin", cognito_sub=f"a-{unique_suffix}")
+    f.add_membership(db_session, school=school, user=admin, role_codes=["school_admin"])
+    db_session.commit()
+
+    headers = f.auth_headers(admin, school_id=school.id)
+    course_id = structure["course"].id
+
+    with_time = client.post(
+        f"/api/v1/courses/{course_id}/calendar-events",
+        headers=headers,
+        json={"title": "Examen", "event_date": "2026-03-15", "event_time": "10:30"},
+    )
+    assert with_time.status_code == 200, with_time.text
+    assert with_time.json()["event_time"] == "10:30:00"
+
+    without_time = client.post(
+        f"/api/v1/courses/{course_id}/calendar-events",
+        headers=headers,
+        json={"title": "Día festivo", "event_date": "2026-03-15"},
+    )
+    assert without_time.status_code == 200, without_time.text
+    assert without_time.json()["event_time"] is None
+
+    earlier_time = client.post(
+        f"/api/v1/courses/{course_id}/calendar-events",
+        headers=headers,
+        json={"title": "Reunión temprana", "event_date": "2026-03-15", "event_time": "07:00"},
+    )
+    assert earlier_time.status_code == 200, earlier_time.text
+
+    list_resp = client.get(f"/api/v1/courses/{course_id}/calendar-events", headers=headers)
+    assert list_resp.status_code == 200, list_resp.text
+    titles = [e["title"] for e in list_resp.json()]
+    # Mismo día: primero el que no tiene hora (todo el día), luego por hora ascendente.
+    assert titles == ["Día festivo", "Reunión temprana", "Examen"]
+
+
 def test_create_calendar_event_rejects_empty_title(db_session, client, unique_suffix):
     f.ensure_role_catalog(db_session)
     school = f.create_school(db_session, f"Escuela {unique_suffix}")

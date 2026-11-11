@@ -19,7 +19,13 @@ import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { downloadFile } from "../lib/download";
-import { formatDateOnly, formatDateParts, formatDateTime } from "../lib/dates";
+import {
+  extractTimeFromIso,
+  formatDateOnly,
+  formatDateParts,
+  formatDateTime,
+  formatTimeOnly,
+} from "../lib/dates";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -880,8 +886,32 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
 }
 
 type CalendarItem =
-  | { kind: "event"; id: string; date: string; title: string; description: string | null }
-  | { kind: "assignment"; id: string; date: string; title: string; status: Assignment["status"] };
+  | {
+      kind: "event";
+      id: string;
+      date: string;
+      time: string | null;
+      title: string;
+      description: string | null;
+    }
+  | {
+      kind: "assignment";
+      id: string;
+      date: string;
+      time: string | null;
+      title: string;
+      status: Assignment["status"];
+    };
+
+// Sin hora (fecha importante "todo el día") va antes que cualquier hora
+// puntual del mismo día; entre dos horas puntuales, orden ascendente.
+function compareCalendarItems(a: CalendarItem, b: CalendarItem): number {
+  if (a.date !== b.date) return a.date.localeCompare(b.date);
+  if (a.time === b.time) return 0;
+  if (a.time === null) return -1;
+  if (b.time === null) return 1;
+  return a.time.localeCompare(b.time);
+}
 
 function monthStart(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -942,6 +972,7 @@ function CourseCalendarSection({
         kind: "event",
         id: e.id,
         date: e.event_date,
+        time: e.event_time ? formatTimeOnly(e.event_time) : null,
         title: e.title,
         description: e.description,
       }),
@@ -951,11 +982,12 @@ function CourseCalendarSection({
         kind: "assignment",
         id: a.id,
         date: dueDateKey(a.due_at),
+        time: extractTimeFromIso(a.due_at),
         title: a.title,
         status: a.status,
       }),
     ),
-  ].sort((a, b) => a.date.localeCompare(b.date));
+  ].sort(compareCalendarItems);
 
   const itemsByDate = new Map<string, CalendarItem[]>();
   for (const item of items) {
@@ -1087,6 +1119,9 @@ function CourseCalendarSection({
                   ) : (
                     <p className="font-medium text-brand-900">{item.title}</p>
                   )}
+                  <p className="text-xs text-slate-500">
+                    {item.time ?? "Todo el día"}
+                  </p>
                   {item.kind === "event" && item.description && (
                     <p className="text-sm text-slate-500">{item.description}</p>
                   )}
@@ -1177,6 +1212,7 @@ function DayEventsModal({
   const [isAdding, setIsAdding] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [eventTime, setEventTime] = useState("");
 
   const createMutation = useMutation({
     mutationFn: async () =>
@@ -1184,12 +1220,14 @@ function DayEventsModal({
         await apiClient.post(`/courses/${courseId}/calendar-events`, {
           title,
           event_date: date,
+          event_time: eventTime || null,
           description: description.trim() || null,
         })
       ).data,
     onSuccess: () => {
       setTitle("");
       setDescription("");
+      setEventTime("");
       setIsAdding(false);
       onCreated();
     },
@@ -1238,6 +1276,7 @@ function DayEventsModal({
                     ) : (
                       <p className="text-sm font-medium text-brand-900">{item.title}</p>
                     )}
+                    <p className="text-xs text-slate-500">{item.time ?? "Todo el día"}</p>
                     {item.kind === "event" && item.description && (
                       <p className="text-xs text-slate-500">{item.description}</p>
                     )}
@@ -1283,6 +1322,27 @@ function DayEventsModal({
                   placeholder="Título"
                   className="focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
                 />
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-slate-600" htmlFor="day-modal-time">
+                    Hora (opcional)
+                  </label>
+                  <input
+                    id="day-modal-time"
+                    type="time"
+                    value={eventTime}
+                    onChange={(e) => setEventTime(e.target.value)}
+                    className="focus-ring rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+                  />
+                  {eventTime && (
+                    <button
+                      type="button"
+                      onClick={() => setEventTime("")}
+                      className="focus-ring text-xs text-brand-700 hover:underline"
+                    >
+                      Quitar hora
+                    </button>
+                  )}
+                </div>
                 <input
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -1342,8 +1402,11 @@ function NewCalendarEventModal({
 }) {
   const [title, setTitle] = useState("");
   const [eventDate, setEventDate] = useState("");
+  const [eventTime, setEventTime] = useState("");
   const [description, setDescription] = useState("");
-  const dayItems = eventDate ? items.filter((item) => item.date === eventDate) : [];
+  const dayItems = eventDate
+    ? items.filter((item) => item.date === eventDate).sort(compareCalendarItems)
+    : [];
 
   const createMutation = useMutation({
     mutationFn: async () =>
@@ -1351,6 +1414,7 @@ function NewCalendarEventModal({
         await apiClient.post(`/courses/${courseId}/calendar-events`, {
           title,
           event_date: eventDate,
+          event_time: eventTime || null,
           description: description.trim() || null,
         })
       ).data,
@@ -1399,11 +1463,36 @@ function NewCalendarEventModal({
               className="focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
             />
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600" htmlFor="cal-date">
-              Fecha
-            </label>
-            <DatePicker id="cal-date" value={eventDate} onChange={setEventDate} />
+          <div className="flex flex-wrap gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600" htmlFor="cal-date">
+                Fecha
+              </label>
+              <DatePicker id="cal-date" value={eventDate} onChange={setEventDate} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600" htmlFor="cal-time">
+                Hora (opcional)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="cal-time"
+                  type="time"
+                  value={eventTime}
+                  onChange={(e) => setEventTime(e.target.value)}
+                  className="focus-ring rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+                />
+                {eventTime && (
+                  <button
+                    type="button"
+                    onClick={() => setEventTime("")}
+                    className="focus-ring text-xs text-brand-700 hover:underline"
+                  >
+                    Quitar
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           {eventDate && (
@@ -1434,6 +1523,7 @@ function NewCalendarEventModal({
                           aria-hidden="true"
                         />
                         <span className="truncate">{item.title}</span>
+                        <span className="shrink-0 text-slate-400">{item.time ?? "todo el día"}</span>
                       </li>
                     ))}
                   </ul>

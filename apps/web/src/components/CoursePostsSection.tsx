@@ -3,9 +3,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../lib/apiClient";
 import { formatDateTime } from "../lib/dates";
 import { getFileBlobUrl } from "../lib/download";
-import type { CoursePost, CoursePostComment, CoursePostPoll } from "../lib/types";
+import type { CoursePost, CoursePostComment, CoursePostPoll, FileAttachment } from "../lib/types";
 import { EmptyState, ErrorState, LoadingState } from "./States";
-import { ChatIcon, CloseIcon, ImageIcon, PlusIcon, PollIcon, TrashIcon } from "./icons";
+import {
+  ChatIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  ImageIcon,
+  PlusIcon,
+  PollIcon,
+  TrashIcon,
+} from "./icons";
 
 // Publicaciones del curso, tipo "red social" (pestaña nueva): quien administra
 // el curso publica (mismo permiso que crear una tarea o fecha importante —
@@ -112,6 +121,7 @@ function PostCard({
   onDelete: () => void;
 }) {
   const [showComments, setShowComments] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const authorInitial = post.author_name.charAt(0).toUpperCase() || "?";
 
   return (
@@ -148,10 +158,19 @@ function PostCard({
         <div
           className={`mt-3 grid gap-2 ${post.images.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}
         >
-          {post.images.map((image) => (
-            <PostImage key={image.id} fileId={image.id} />
+          {post.images.map((image, index) => (
+            <PostImage key={image.id} fileId={image.id} onClick={() => setLightboxIndex(index)} />
           ))}
         </div>
+      )}
+
+      {lightboxIndex !== null && (
+        <ImageLightbox
+          images={post.images}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onNavigate={setLightboxIndex}
+        />
       )}
 
       {post.poll && <PollWidget poll={post.poll} courseId={courseId} />}
@@ -180,7 +199,7 @@ function PostCard({
 // lib/download.ts). No se revoca el blob a propósito: react-query lo sirve
 // desde caché entre renders y revocarlo rompería esa reutilización (mismo
 // motivo documentado en components/StudentAvatar.tsx).
-function PostImage({ fileId }: { fileId: string }) {
+function PostImage({ fileId, onClick }: { fileId: string; onClick: () => void }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["files", fileId, "blob-url"],
     queryFn: async () => getFileBlobUrl(fileId),
@@ -197,7 +216,114 @@ function PostImage({ fileId }: { fileId: string }) {
       </div>
     );
   }
-  return <img src={data.url} alt="" className="aspect-video w-full rounded-lg object-cover" />;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Ver imagen completa"
+      aria-label="Ver imagen completa"
+      className="focus-ring block aspect-video w-full overflow-hidden rounded-lg"
+    >
+      <img
+        src={data.url}
+        alt=""
+        className="h-full w-full cursor-zoom-in object-cover transition-opacity hover:opacity-90"
+      />
+    </button>
+  );
+}
+
+// Visor a pantalla completa (mismo patrón de overlay que los demás cuadros
+// modales de esta sección): clic en una imagen la amplía sin recortar — el
+// grid de la publicación la muestra en aspect-video + object-cover, que
+// recorta a propósito para que el feed quede prolijo, pero aquí no debe
+// perderse nada de la imagen. Si el post tiene varias, las flechas cambian de
+// imagen sin cerrar el visor (misma lógica de "anterior/siguiente" que ya usa
+// PdfPreviewModal para pasar de página).
+function ImageLightbox({
+  images,
+  index,
+  onClose,
+  onNavigate,
+}: {
+  images: FileAttachment[];
+  index: number;
+  onClose: () => void;
+  onNavigate: (index: number) => void;
+}) {
+  const current = images[index];
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["files", current.id, "blob-url"],
+    queryFn: async () => getFileBlobUrl(current.id),
+    staleTime: 5 * 60 * 1000,
+  });
+  const hasMultiple = images.length > 1;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 p-4"
+      onClick={onClose}
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        title="Cerrar"
+        aria-label="Cerrar"
+        className="focus-ring absolute right-4 top-4 rounded-md border border-white/30 p-1.5 text-white hover:bg-white/10"
+      >
+        <CloseIcon />
+      </button>
+
+      {hasMultiple && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigate(index - 1);
+          }}
+          disabled={index <= 0}
+          title="Imagen anterior"
+          aria-label="Imagen anterior"
+          className="focus-ring absolute left-4 top-1/2 -translate-y-1/2 rounded-full border border-white/30 p-2 text-white hover:bg-white/10 disabled:opacity-30"
+        >
+          <ChevronLeftIcon />
+        </button>
+      )}
+
+      {isLoading && <LoadingState label="Cargando imagen…" />}
+      {isError && <p className="text-sm text-white">No se pudo cargar la imagen.</p>}
+      {data && (
+        <img
+          src={data.url}
+          alt=""
+          onClick={(e) => e.stopPropagation()}
+          className="max-h-full max-w-full rounded-lg object-contain"
+        />
+      )}
+
+      {hasMultiple && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigate(index + 1);
+          }}
+          disabled={index >= images.length - 1}
+          title="Imagen siguiente"
+          aria-label="Imagen siguiente"
+          className="focus-ring absolute right-4 top-1/2 -translate-y-1/2 rounded-full border border-white/30 p-2 text-white hover:bg-white/10 disabled:opacity-30"
+        >
+          <ChevronRightIcon />
+        </button>
+      )}
+
+      {hasMultiple && (
+        <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-white/80">
+          {index + 1} de {images.length}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function PollWidget({ poll, courseId }: { poll: CoursePostPoll; courseId: string }) {

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
@@ -21,6 +21,7 @@ class CourseCalendarEventCreate(BaseModel):
     title: str
     description: str | None = None
     event_date: date
+    event_time: time | None = None
 
 
 class CourseCalendarEventOut(BaseModel):
@@ -30,6 +31,7 @@ class CourseCalendarEventOut(BaseModel):
     title: str
     description: str | None
     event_date: date
+    event_time: time | None
     created_at: datetime
 
 

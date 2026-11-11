@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, nulls_first, select
 from sqlalchemy.orm import Session
 
 from app.modules.learning.models import (
@@ -46,7 +46,9 @@ def list_calendar_events(
 ) -> list[CourseCalendarEvent]:
     stmt = select(CourseCalendarEvent).where(
         CourseCalendarEvent.school_id == school_id, CourseCalendarEvent.course_id == course_id
-    ).order_by(CourseCalendarEvent.event_date)
+    ).order_by(
+        CourseCalendarEvent.event_date, nulls_first(CourseCalendarEvent.event_time)
+    )
     return list(db.execute(stmt).scalars().all())
 
 

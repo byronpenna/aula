@@ -209,6 +209,7 @@ def create_calendar_event(
         title=title,
         description=(payload.description or "").strip() or None,
         event_date=payload.event_date,
+        event_time=payload.event_time,
         created_by_user_id=user_id,
     )
     db.add(event)

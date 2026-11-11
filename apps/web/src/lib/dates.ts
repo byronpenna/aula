@@ -19,6 +19,18 @@ export function formatDateTime(iso: string): string {
   return `${formatDdMmYyyy(d)}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
+// Hora local de un datetime ISO completo (due_at de una tarea), como "HH:MM".
+export function extractTimeFromIso(iso: string): string {
+  const d = new Date(iso);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+// El backend serializa `time` como "HH:MM:SS" — para mostrarla o para un
+// <input type="time"> (que espera "HH:MM") basta la parte HH:MM.
+export function formatTimeOnly(value: string): string {
+  return value.slice(0, 5);
+}
+
 // `new Date("2026-03-15")` se interpreta como medianoche UTC (ISO 8601 fecha
 // sola), así que en un colegio con huso horario negativo (America/El_Salvador,
 // UTC-6) los getters locales (getDate/getMonth) devuelven el día anterior —
