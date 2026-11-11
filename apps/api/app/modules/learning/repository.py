@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.learning.models import (
     Assignment,
+    CourseCalendarEvent,
     ResourceLink,
     ResourceLinkComment,
     ResourceSection,
@@ -33,6 +34,24 @@ def list_assignments_for_course(
     if published_only:
         stmt = stmt.where(Assignment.status == "published")
     return list(db.execute(stmt).scalars().all())
+
+
+def list_calendar_events(
+    db: Session, school_id: uuid.UUID, course_id: uuid.UUID
+) -> list[CourseCalendarEvent]:
+    stmt = select(CourseCalendarEvent).where(
+        CourseCalendarEvent.school_id == school_id, CourseCalendarEvent.course_id == course_id
+    ).order_by(CourseCalendarEvent.event_date)
+    return list(db.execute(stmt).scalars().all())
+
+
+def get_calendar_event(
+    db: Session, school_id: uuid.UUID, event_id: uuid.UUID
+) -> CourseCalendarEvent | None:
+    stmt = select(CourseCalendarEvent).where(
+        CourseCalendarEvent.id == event_id, CourseCalendarEvent.school_id == school_id
+    )
+    return db.execute(stmt).scalar_one_or_none()
 
 
 def get_submission(

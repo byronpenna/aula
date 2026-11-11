@@ -253,6 +253,15 @@ export interface Assignment {
   allow_late: boolean;
 }
 
+export interface CourseCalendarEvent {
+  id: string;
+  course_id: string;
+  title: string;
+  description: string | null;
+  event_date: string;
+  created_at: string;
+}
+
 export interface Submission {
   id: string;
   assignment_id: string;

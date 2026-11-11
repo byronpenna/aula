@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
@@ -15,6 +15,22 @@ class AssignmentCreate(BaseModel):
     due_at: datetime
     max_score: Decimal = Decimal(100)
     allow_late: bool = False
+
+
+class CourseCalendarEventCreate(BaseModel):
+    title: str
+    description: str | None = None
+    event_date: date
+
+
+class CourseCalendarEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    course_id: uuid.UUID
+    title: str
+    description: str | None
+    event_date: date
+    created_at: datetime
 
 
 class AssignmentUpdate(BaseModel):

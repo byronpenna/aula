@@ -13,6 +13,7 @@ from app.modules.learning import repository as learning_repo
 from app.modules.learning import service as learning_service
 from app.modules.learning.models import (
     Assignment,
+    CourseCalendarEvent,
     ResourceLink,
     ResourceLinkComment,
     ResourceSection,
@@ -21,6 +22,8 @@ from app.modules.learning.schemas import (
     AssignmentCreate,
     AssignmentOut,
     AssignmentUpdate,
+    CourseCalendarEventCreate,
+    CourseCalendarEventOut,
     CourseResourcesOut,
     ResourceLinkCommentCreate,
     ResourceLinkCommentOut,
@@ -62,6 +65,45 @@ def list_assignments(
     current: CurrentMembership = Depends(require_permission(COURSE_READ)),
 ) -> list[Assignment]:
     return learning_service.list_assignments(db, current, user.id, course_id)
+
+
+@router.get(
+    "/courses/{course_id}/calendar-events", response_model=list[CourseCalendarEventOut]
+)
+def list_calendar_events(
+    course_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(COURSE_READ)),
+) -> list[CourseCalendarEvent]:
+    return learning_service.list_calendar_events(db, current, user.id, course_id)
+
+
+@router.post(
+    "/courses/{course_id}/calendar-events", response_model=CourseCalendarEventOut
+)
+def create_calendar_event(
+    course_id: uuid.UUID,
+    payload: CourseCalendarEventCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(ASSIGNMENT_MANAGE)),
+) -> CourseCalendarEvent:
+    return learning_service.create_calendar_event(
+        db, current, user.id, course_id, payload, request.state.request_id
+    )
+
+
+@router.delete("/calendar-events/{event_id}", status_code=204, response_model=None)
+def delete_calendar_event(
+    event_id: uuid.UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current: CurrentMembership = Depends(require_permission(ASSIGNMENT_MANAGE)),
+) -> None:
+    learning_service.delete_calendar_event(db, current, user.id, event_id, request.state.request_id)
 
 
 @router.patch("/assignments/{assignment_id}", response_model=AssignmentOut)

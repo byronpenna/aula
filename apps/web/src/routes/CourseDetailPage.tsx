@@ -8,6 +8,7 @@ import { apiClient } from "../lib/apiClient";
 import type {
   Assignment,
   Course,
+  CourseCalendarEvent,
   CourseResources,
   CourseStudent,
   FileAttachment,
@@ -18,8 +19,17 @@ import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { StatusBadge } from "../components/StatusBadge";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { downloadFile } from "../lib/download";
-import { formatDateTime } from "../lib/dates";
-import { CloseIcon, DownloadIcon, EyeIcon, LinkIcon, PencilIcon, TrashIcon } from "../components/icons";
+import { formatDateParts, formatDateTime } from "../lib/dates";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  DownloadIcon,
+  EyeIcon,
+  LinkIcon,
+  PencilIcon,
+  TrashIcon,
+} from "../components/icons";
 import { ResourceTypeBadge } from "../components/ResourceTypeBadge";
 import { getResourceType, RESOURCE_TYPE_FILTERS, RESOURCE_UPLOAD_ACCEPT } from "../lib/resourceTypes";
 import {
@@ -41,10 +51,11 @@ const PdfPreviewModal = lazy(() =>
   import("../components/PdfPreviewModal").then((m) => ({ default: m.PdfPreviewModal })),
 );
 
-type TabKey = "tareas" | "recursos";
+type TabKey = "tareas" | "recursos" | "calendario";
 const TABS: { key: TabKey; label: string }[] = [
   { key: "tareas", label: "Tareas" },
   { key: "recursos", label: "Recursos" },
+  { key: "calendario", label: "Calendario" },
 ];
 
 // max_score se mantiene como string en el formulario (los inputs HTML son texto) y
@@ -140,6 +151,10 @@ export function CourseDetailPage() {
 
       {tab === "recursos" && courseId && (
         <CourseResourcesSection courseId={courseId} isStaff={isStaff} />
+      )}
+
+      {tab === "calendario" && courseId && (
+        <CourseCalendarSection courseId={courseId} isStaff={isStaff} assignments={data ?? []} />
       )}
 
       {tab === "tareas" && (
@@ -853,6 +868,417 @@ function CourseResourcesSection({ courseId, isStaff }: { courseId: string; isSta
       )}
 
       {previewLink && <LinkPreviewModal link={previewLink} onClose={() => setPreviewLink(null)} />}
+    </div>
+  );
+}
+
+type CalendarItem =
+  | { kind: "event"; id: string; date: string; title: string; description: string | null }
+  | { kind: "assignment"; id: string; date: string; title: string; status: Assignment["status"] };
+
+function monthStart(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+function addMonths(d: Date, n: number): Date {
+  return new Date(d.getFullYear(), d.getMonth() + n, 1);
+}
+function dateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+// due_at trae hora y zona (ISO completo), así que sí se puede parsear con
+// `new Date(...)` normal — a diferencia de event_date (ver lib/dates.ts).
+function dueDateKey(dueAt: string): string {
+  return dateKey(new Date(dueAt));
+}
+const MONTH_LABEL_FORMATTER = new Intl.DateTimeFormat("es", { month: "long", year: "numeric" });
+const WEEKDAY_LABELS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
+// Calendario del curso (sección nueva): combina las fechas importantes que
+// agrega quien administra el curso (GET /courses/:id/calendar-events) con las
+// fechas de vencimiento de las tareas ya existentes (prop `assignments`,
+// reutiliza la misma consulta que ya hace la pestaña "Tareas" — nunca se pide
+// dos veces). Un alumno ve exactamente las tareas que `list_assignments` ya le
+// filtra (solo publicadas); las fechas importantes son visibles para
+// cualquiera con acceso al curso, pero solo quien administra el curso puede
+// agregarlas o quitarlas (ver learning/service.py::create_calendar_event).
+function CourseCalendarSection({
+  courseId,
+  isStaff,
+  assignments,
+}: {
+  courseId: string;
+  isStaff: boolean;
+  assignments: Assignment[];
+}) {
+  const queryClient = useQueryClient();
+  const [viewMonth, setViewMonth] = useState(() => monthStart(new Date()));
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const queryKey = ["courses", courseId, "calendar-events"];
+  const { data, isLoading, error } = useQuery<CourseCalendarEvent[]>({
+    queryKey,
+    queryFn: async () => (await apiClient.get(`/courses/${courseId}/calendar-events`)).data,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (eventId: string) => apiClient.delete(`/calendar-events/${eventId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+  });
+
+  if (isLoading) return <LoadingState label="Cargando calendario…" />;
+  if (error) return <ErrorState error={error} />;
+
+  const items: CalendarItem[] = [
+    ...(data ?? []).map(
+      (e): CalendarItem => ({
+        kind: "event",
+        id: e.id,
+        date: e.event_date,
+        title: e.title,
+        description: e.description,
+      }),
+    ),
+    ...assignments.map(
+      (a): CalendarItem => ({
+        kind: "assignment",
+        id: a.id,
+        date: dueDateKey(a.due_at),
+        title: a.title,
+        status: a.status,
+      }),
+    ),
+  ].sort((a, b) => a.date.localeCompare(b.date));
+
+  const itemsByDate = new Map<string, CalendarItem[]>();
+  for (const item of items) {
+    const list = itemsByDate.get(item.date) ?? [];
+    list.push(item);
+    itemsByDate.set(item.date, list);
+  }
+
+  const year = viewMonth.getFullYear();
+  const month = viewMonth.getMonth();
+  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7; // 0 = lunes
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (Date | null)[] = [
+    ...Array.from({ length: firstWeekday }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, i) => new Date(year, month, i + 1)),
+  ];
+  const todayKey = dateKey(new Date());
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="font-display text-xl font-semibold text-brand-900">Calendario del curso</h1>
+        {isStaff && (
+          <button
+            type="button"
+            className="focus-ring rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+            onClick={() => setIsModalOpen(true)}
+          >
+            Nueva fecha importante
+          </button>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-brand-100 bg-white p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setViewMonth((d) => addMonths(d, -1))}
+            title="Mes anterior"
+            aria-label="Mes anterior"
+            className="focus-ring rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-100"
+          >
+            <ChevronLeftIcon />
+          </button>
+          <p className="font-display font-semibold text-brand-900 capitalize">
+            {MONTH_LABEL_FORMATTER.format(viewMonth)}
+          </p>
+          <button
+            type="button"
+            onClick={() => setViewMonth((d) => addMonths(d, 1))}
+            title="Mes siguiente"
+            aria-label="Mes siguiente"
+            className="focus-ring rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-100"
+          >
+            <ChevronRightIcon />
+          </button>
+        </div>
+        <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-brand-600">
+          {WEEKDAY_LABELS.map((label) => (
+            <span key={label}>{label}</span>
+          ))}
+        </div>
+        <div className="mt-1 grid grid-cols-7 gap-1">
+          {cells.map((day, i) => {
+            if (!day) return <span key={`blank-${i}`} />;
+            const key = dateKey(day);
+            const dayItems = itemsByDate.get(key) ?? [];
+            return (
+              <div
+                key={key}
+                className={`flex flex-col items-center gap-0.5 rounded-md py-1.5 text-sm ${
+                  key === todayKey ? "bg-brand-50 font-semibold text-brand-900" : "text-slate-700"
+                }`}
+              >
+                <span>{day.getDate()}</span>
+                {dayItems.length > 0 && (
+                  <span className="flex gap-0.5" aria-hidden="true">
+                    {dayItems.slice(0, 3).map((item) => (
+                      <span
+                        key={item.id}
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          item.kind === "assignment" ? "bg-amber-500" : "bg-brand-500"
+                        }`}
+                      />
+                    ))}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <EmptyState
+          title="Sin fechas todavía"
+          description="Las tareas publicadas y las fechas importantes que agregues aparecerán aquí."
+        />
+      ) : (
+        <ul className="space-y-2">
+          {items.map((item) => (
+            <li
+              key={`${item.kind}-${item.id}`}
+              className="flex items-center justify-between gap-3 rounded-lg border border-brand-100 bg-white p-3"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex w-14 shrink-0 flex-col items-center rounded-md bg-brand-50 py-1 text-brand-700">
+                  <span className="text-base font-semibold leading-none">
+                    {formatDateParts(item.date).day}
+                  </span>
+                  <span className="text-xs uppercase">{formatDateParts(item.date).month}</span>
+                </div>
+                <div className="min-w-0">
+                  {item.kind === "assignment" ? (
+                    <Link
+                      to={`/assignments/${item.id}?courseId=${courseId}`}
+                      className="focus-ring font-medium text-brand-900 hover:underline"
+                    >
+                      {item.title}
+                    </Link>
+                  ) : (
+                    <p className="font-medium text-brand-900">{item.title}</p>
+                  )}
+                  {item.kind === "event" && item.description && (
+                    <p className="text-sm text-slate-500">{item.description}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {item.kind === "assignment" ? (
+                  <StatusBadge status={item.status} />
+                ) : (
+                  <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-200">
+                    Fecha importante
+                  </span>
+                )}
+                {isStaff && item.kind === "event" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`¿Quitar "${item.title}" del calendario?`)) {
+                        deleteMutation.mutate(item.id);
+                      }
+                    }}
+                    title="Quitar"
+                    aria-label={`Quitar ${item.title}`}
+                    className="focus-ring rounded-md border border-red-200 p-1.5 text-red-700 hover:bg-red-50"
+                  >
+                    <TrashIcon />
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {deleteMutation.isError && <ErrorState error={deleteMutation.error} />}
+
+      {isModalOpen && (
+        <NewCalendarEventModal
+          courseId={courseId}
+          items={items}
+          onClose={() => setIsModalOpen(false)}
+          onCreated={() => {
+            setIsModalOpen(false);
+            queryClient.invalidateQueries({ queryKey });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Cuadro modal para agregar una fecha importante (mismo patrón de overlay que
+// AddLinkModal): al elegir la fecha se muestra de inmediato la "vista del
+// día" — todo lo que ya está programado ese mismo día (otras fechas
+// importantes y vencimientos de tareas, vía la prop `items` que
+// CourseCalendarSection ya tiene calculada) — para que quien administra el
+// curso vea de un vistazo si hay un cruce antes de guardar. No bloquea
+// guardar aunque haya cruce: es información para decidir, no una validación.
+function NewCalendarEventModal({
+  courseId,
+  items,
+  onClose,
+  onCreated,
+}: {
+  courseId: string;
+  items: CalendarItem[];
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [eventDate, setEventDate] = useState("");
+  const [description, setDescription] = useState("");
+  const dayItems = eventDate ? items.filter((item) => item.date === eventDate) : [];
+
+  const createMutation = useMutation({
+    mutationFn: async () =>
+      (
+        await apiClient.post(`/courses/${courseId}/calendar-events`, {
+          title,
+          event_date: eventDate,
+          description: description.trim() || null,
+        })
+      ).data,
+    onSuccess: onCreated,
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-brand-100 p-3">
+          <p className="font-display font-medium text-brand-900">Nueva fecha importante</p>
+          <button
+            type="button"
+            onClick={onClose}
+            title="Cerrar"
+            aria-label="Cerrar"
+            className="focus-ring rounded-md border border-slate-300 p-1.5 text-slate-600 hover:bg-slate-100"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <form
+          className="space-y-3 overflow-y-auto p-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (title.trim() && eventDate) createMutation.mutate();
+          }}
+        >
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600" htmlFor="cal-title">
+              Título
+            </label>
+            <input
+              id="cal-title"
+              autoFocus
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Examen parcial"
+              className="focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600" htmlFor="cal-date">
+              Fecha
+            </label>
+            <input
+              id="cal-date"
+              type="date"
+              value={eventDate}
+              onChange={(e) => setEventDate(e.target.value)}
+              className="focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+            />
+          </div>
+
+          {eventDate && (
+            <div>
+              <p className="mb-1 text-xs font-medium text-slate-600">
+                Vista del día — {formatDateParts(eventDate).day} de {formatDateParts(eventDate).month}
+              </p>
+              {dayItems.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-brand-200 bg-brand-50/60 p-3 text-xs text-brand-700">
+                  Sin otras actividades ese día.
+                </p>
+              ) : (
+                <div className="space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                  <p className="text-xs font-medium text-amber-800">
+                    Ya hay {dayItems.length === 1 ? "una actividad" : `${dayItems.length} actividades`}{" "}
+                    ese día:
+                  </p>
+                  <ul className="space-y-1">
+                    {dayItems.map((item) => (
+                      <li
+                        key={`${item.kind}-${item.id}`}
+                        className="flex items-center gap-2 text-xs text-slate-700"
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                            item.kind === "assignment" ? "bg-amber-500" : "bg-brand-500"
+                          }`}
+                          aria-hidden="true"
+                        />
+                        <span className="truncate">{item.title}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600" htmlFor="cal-description">
+              Descripción (opcional)
+            </label>
+            <input
+              id="cal-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="focus-ring w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+            />
+          </div>
+
+          {createMutation.isError && <ErrorState error={createMutation.error} />}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              className="focus-ring rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
+              onClick={onClose}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={!title.trim() || !eventDate || createMutation.isPending}
+              className="focus-ring rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+            >
+              {createMutation.isPending ? "Guardando…" : "Guardar"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

@@ -23,6 +23,7 @@ from app.modules.identity import service as identity_service
 from app.modules.learning import repository as learning_repo
 from app.modules.learning.models import (
     Assignment,
+    CourseCalendarEvent,
     ResourceLink,
     ResourceLinkComment,
     ResourceSection,
@@ -32,6 +33,7 @@ from app.modules.learning.models import (
 from app.modules.learning.schemas import (
     AssignmentCreate,
     AssignmentUpdate,
+    CourseCalendarEventCreate,
     ResourceLinkCommentCreate,
     ResourceLinkCreate,
 )
@@ -146,6 +148,97 @@ def list_assignments(
     return learning_repo.list_assignments_for_course(
         db, current.school_id, course_id, published_only=published_only
     )
+
+
+# --- Calendario del curso (fechas importantes) ------------------------------
+#
+# Mismo criterio que las tareas (sección 9): verlas alcanza con course:read
+# (cualquier rol con acceso al curso, incluido alumno/tutor); crearlas o
+# quitarlas exige ASSIGNMENT_MANAGE a nivel de permiso (router) +
+# require_course_access scopeado a este curso puntual (aquí) — igual que
+# create_assignment/update_assignment, nunca require_course_staff_access
+# (que además dejaría fuera a un docente que comparte el curso pero no es "el
+# asignado"). Las fechas de vencimiento de las tareas no se duplican aquí: el
+# frontend las combina al mostrar (ver CourseDetailPage.tsx).
+
+
+def _require_calendar_event(
+    db: Session, current: CurrentMembership, event_id: uuid.UUID
+) -> tuple[CourseCalendarEvent, Course]:
+    event = learning_repo.get_calendar_event(db, current.school_id, event_id)
+    if event is None:
+        raise NotFoundError("La fecha indicada no existe en este colegio.")
+    course = _require_course(db, current, event.course_id)
+    return event, course
+
+
+def list_calendar_events(
+    db: Session, current: CurrentMembership, user_id: uuid.UUID, course_id: uuid.UUID
+) -> list[CourseCalendarEvent]:
+    course = _require_course(db, current, course_id)
+    academics_service.require_course_access(db, current, user_id, course)
+    return learning_repo.list_calendar_events(db, current.school_id, course_id)
+
+
+def create_calendar_event(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    course_id: uuid.UUID,
+    payload: CourseCalendarEventCreate,
+    request_id: str | None,
+) -> CourseCalendarEvent:
+    course = _require_course(db, current, course_id)
+    academics_service.require_course_access(db, current, user_id, course)
+
+    title = _clean_name(payload.title)
+    if not title:
+        raise UnprocessableError("El título no puede estar vacío.")
+
+    event = CourseCalendarEvent(
+        school_id=current.school_id,
+        course_id=course_id,
+        title=title,
+        description=(payload.description or "").strip() or None,
+        event_date=payload.event_date,
+        created_by_user_id=user_id,
+    )
+    db.add(event)
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="calendar_event.create",
+        target_type="course_calendar_event",
+        target_id=str(event.id),
+        request_id=request_id,
+    )
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def delete_calendar_event(
+    db: Session,
+    current: CurrentMembership,
+    user_id: uuid.UUID,
+    event_id: uuid.UUID,
+    request_id: str | None,
+) -> None:
+    event, course = _require_calendar_event(db, current, event_id)
+    academics_service.require_course_access(db, current, user_id, course)
+
+    db.delete(event)
+    identity_service.record_audit_event(
+        db,
+        school_id=current.school_id,
+        actor_id=current.membership.user_id,
+        action="calendar_event.delete",
+        target_type="course_calendar_event",
+        target_id=str(event_id),
+        request_id=request_id,
+    )
+    db.commit()
 
 
 def _student_profile_for_caller(db: Session, current: CurrentMembership, user_id: uuid.UUID):

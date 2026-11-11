@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, UniqueConstraint, func
@@ -25,6 +25,30 @@ class Assignment(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
     allow_late: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     grading_period_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("grading_periods.id"), nullable=True
+    )
+
+
+class CourseCalendarEvent(UUIDPKMixin, TimestampMixin, SchoolScopedMixin, Base):
+    """Fecha importante del calendario de un curso (examen, entrega especial,
+    día festivo, etc.), agregada aparte de las tareas: las fechas de
+    vencimiento de Assignment ya aparecen en el calendario automáticamente sin
+    duplicarlas aquí (el frontend las combina al mostrar, ver
+    CourseDetailPage.tsx). Gestionarlas (crear/quitar) es acción de quien
+    administra el curso — mismo criterio que crear una tarea:
+    ASSIGNMENT_MANAGE a nivel de permiso + require_course_access scopeado a
+    este curso puntual (ver learning/service.py::create_calendar_event).
+    Verlas alcanza con course:read, igual que el resto del curso."""
+
+    __tablename__ = "course_calendar_events"
+
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("courses.id"), nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(nullable=False)
+    description: Mapped[str | None] = mapped_column(nullable=True)
+    event_date: Mapped[date] = mapped_column(nullable=False)
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
 
 
